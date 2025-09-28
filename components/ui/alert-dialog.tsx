@@ -124,9 +124,10 @@ function AlertDialogAction({
 }: React.ComponentProps<typeof AlertDialogPrimitive.Action>) {
   return (
     <AlertDialogPrimitive.Action
-      className={cn(buttonVariants(), className)}
-      {...props}
-    />
+  className={cn(buttonVariants({ variant: "default", size: "default" }), className)}
+  {...props}
+/>
+
   )
 }
 
