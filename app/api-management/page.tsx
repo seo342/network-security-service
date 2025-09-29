@@ -11,7 +11,7 @@ interface ApiKey {
   name: string
   key: string
   created: string
-  lastUsed: string
+  lastUsed: any
   requests: number
   status: "active" | "inactive"
   endpoint: string
@@ -59,7 +59,7 @@ export default function ApiManagementPage() {
           </TabsList>
 
           <TabsContent value="keys">
-            <APIKeyList apiKeys={mockApiKeys} />
+            <APIKeyList />
           </TabsContent>
 
           <TabsContent value="docs">
