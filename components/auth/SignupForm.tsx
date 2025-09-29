@@ -11,6 +11,7 @@ import PasswordInput from "@/components/auth/PasswordInput"
 import PasswordStrengthMeter from "@/components/auth/PasswordStrengthMeter"
 import ConfirmPassword from "@/components/auth/ConfirmPassword"
 import TermsCheckbox from "@/components/auth/TermsCheckbox"
+import {supabase} from "@/lib/supabaseClient"
 
 export default function SignupForm() {
   const [formData, setFormData] = useState({
@@ -44,8 +45,26 @@ export default function SignupForm() {
     }
 
     setIsLoading(true)
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    router.push("/dashboard")
+    try{
+      const {data,error}=await supabase.auth.signUp({
+        email:formData.email,
+        password:formData.password,
+        options:{
+          data:{
+            name:formData.name, //메타데이터로 저장
+          },
+        },
+      })
+      if(error) throw error
+      alert("회원가입에 성공했습니다. 가입해 주셔서 진심으로 감사합니다.")
+      router.push("/login")
+    }
+    catch(err:any){
+      alert(err.masagge||"회원가입에 실패했습니다.")
+    }
+    finally{
+      setIsLoading(false)
+    }
   }
 
   return (

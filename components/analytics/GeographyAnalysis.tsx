@@ -4,7 +4,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { MapPin, Download } from "lucide-react"
-import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts"
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Cell,
+} from "recharts"
 
 interface CountryData {
   country: string
@@ -64,18 +73,22 @@ export default function GeographyAnalysis({ data }: GeographyAnalysisProps) {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={data} layout="horizontal">
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis type="number" stroke="hsl(var(--muted-foreground))" />
-                <YAxis dataKey="country" type="category" stroke="hsl(var(--muted-foreground))" />
+              <BarChart data={data}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))"/>
+                <XAxis dataKey="country" stroke="hsl(var(--border))"/>
+                <YAxis stroke="hsl(var(--border))"/>
                 <Tooltip
+                  cursor={{fill:"white"}}
                   contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "8px",
-                  }}
-                />
-                <Bar dataKey="threats" fill="hsl(var(--destructive))" />
+                    backgroundColor:"white",
+                    border: "1px solid black",
+                    borderRadius:"8px",
+                  }}/>
+                  <Bar dataKey="threats">
+                    {data.map((entry,index)=>(
+                      <Cell key={`cell-${index}`} fill={entry.color}/>
+                    ))}
+                  </Bar>
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

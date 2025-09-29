@@ -22,13 +22,9 @@ export default function TermsCheckbox({ checked, onChange }: TermsCheckboxProps)
         className="w-4 h-4"
       />
       <Label htmlFor="terms" className="text-sm text-muted-foreground">
-        <Link href="/terms" className="text-primary hover:underline">
           이용약관
-        </Link>{" "}
         및{" "}
-        <Link href="/privacy" className="text-primary hover:underline">
           개인정보처리방침
-        </Link>
         에 동의합니다.
       </Label>
     </div>

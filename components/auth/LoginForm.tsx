@@ -9,6 +9,7 @@ import { Eye, EyeOff } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import PasswordInput from "@/components/auth/PasswordInput";
+import {supabase} from "@/lib/supabaseClient";
 
 export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false)
