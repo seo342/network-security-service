@@ -6,7 +6,7 @@ import { AlertTriangle, Shield, Clock, TrendingUp, TrendingDown } from "lucide-r
 export interface Metric {
   title: string
   value: string
-  description: string
+  description: React.ReactNode
   icon: React.ReactNode
   color?: string
 }
