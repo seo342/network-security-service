@@ -61,8 +61,8 @@ export default function ThreatTrends({ trendData, attackTypeData }: ThreatTrends
                 <YAxis stroke="hsl(var(--muted-foreground))" />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
+                    backgroundColor: "white",
+                    border: "1px solid black",
                     borderRadius: "8px",
                   }}
                 />
@@ -70,8 +70,8 @@ export default function ThreatTrends({ trendData, attackTypeData }: ThreatTrends
                   type="monotone"
                   dataKey="threats"
                   stackId="1"
-                  stroke="hsl(var(--destructive))"
-                  fill="hsl(var(--destructive))"
+                  stroke="#ef4444"
+                  fill="#ef4444"
                   fillOpacity={0.6}
                   name="총 위협"
                 />
@@ -79,8 +79,8 @@ export default function ThreatTrends({ trendData, attackTypeData }: ThreatTrends
                   type="monotone"
                   dataKey="blocked"
                   stackId="2"
-                  stroke="hsl(var(--primary))"
-                  fill="hsl(var(--primary))"
+                  stroke="#3b82f6"
+                  fill="#3b82f6"
                   fillOpacity={0.6}
                   name="차단됨"
                 />

@@ -31,8 +31,8 @@ export default function PatternAnalysis({ data }: PatternAnalysisProps) {
               <YAxis stroke="hsl(var(--muted-foreground))" />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "hsl(var(--card))",
-                  border: "1px solid hsl(var(--border))",
+                  backgroundColor: "white",
+                  border: "1px solid black",
                   borderRadius: "8px",
                 }}
               />
@@ -40,8 +40,8 @@ export default function PatternAnalysis({ data }: PatternAnalysisProps) {
                 type="monotone"
                 dataKey="normal"
                 stackId="1"
-                stroke="hsl(var(--primary))"
-                fill="hsl(var(--primary))"
+                stroke="#ef4444"
+                fill="#ef4444"
                 fillOpacity={0.3}
                 name="정상 트래픽"
               />
@@ -49,8 +49,8 @@ export default function PatternAnalysis({ data }: PatternAnalysisProps) {
                 type="monotone"
                 dataKey="threats"
                 stackId="2"
-                stroke="hsl(var(--destructive))"
-                fill="hsl(var(--destructive))"
+                stroke="#3b82f6"
+                fill="#3b82f6"
                 fillOpacity={0.6}
                 name="위협 트래픽"
               />
