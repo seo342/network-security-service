@@ -21,9 +21,15 @@ export default function LoginForm() {
     e.preventDefault()
     setIsLoading(true)
 
-    // 로그인 로직 (추후 Supabase/Auth 연동)
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-
+    const {data,error}=await supabase.auth.signInWithPassword({
+      email:formData.email.trim(),
+      password:formData.password.trim(),
+    })
+    setIsLoading(false)
+    if(error) {
+      alert(`로그인 실패:${error.message}`)
+      return
+    }
     router.push("/dashboard")
   }
 

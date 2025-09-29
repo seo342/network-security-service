@@ -1,15 +1,41 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
-import { useRouter } from "next/router"
+import { useEffect, useState } from "react"
+import {supabase} from "@/lib/supabaseClient"
 // Navigation 컴포넌트: 상단 네비게이션 바
 // - 로고 클릭 → 홈으로 이동
 // - 메뉴 링크 (홈, 분석, API 관리)
 // - 로그인 여부에 따라 버튼 전환 (로그인/회원가입 vs 내 대시보드)
 export function Navigation() {
-  // TODO: 실제 로그인 상태(Supabase Auth)와 연동 필요
+  const [session,setSession]=useState<any>(null)
   const [isLoggedIn] = useState(false)
+
+  //현재 세션
+  useEffect(()=>{
+    supabase.auth.getSession().then(({data})=>{
+      setSession(data.session)
+    })
+
+    //로그인/로그아웃 이벤트 감지
+    const {data:listener}=supabase.auth.onAuthStateChange((_event,session)=>{
+      setSession(session)
+    })
+    return () =>{
+      listener.subscription.unsubscribe()
+    }
+  },[])
+
+  //로그아웃 핸들러
+  const handleLogout=async()=>{
+    const {error}=await supabase.auth.signOut()
+    if(error){
+      console.error("로그아웃 실패:",error.message)
+    }
+    else{
+      setSession(null)//세션 초기화
+    }
+  }
 
   return (
     <header className="w-full bg-background border-b border-border sticky top-0 z-50">
@@ -33,14 +59,17 @@ export function Navigation() {
           </Link>
 
           {/* 로그인 여부에 따라 버튼 다르게 표시 */}
-          {isLoggedIn ? (
-            // 로그인 된 경우 → 대시보드 버튼
+          {session ? (
+            <>
             <Link
               href="/dashboard"
               className="px-4 py-2 rounded-md bg-primary text-white text-sm font-semibold hover:bg-primary/90"
             >
               내 대시보드
             </Link>
+            <button onClick={handleLogout} className="px-4 py-2 rounded-md border border-input text-sm font-semibold hover:bg-muted">
+              로그아웃</button>
+            </>
           ) : (
             // 로그인 안 된 경우 → 로그인/회원가입 버튼
             <>
