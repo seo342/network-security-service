@@ -14,11 +14,13 @@ interface ApiKey {
   status: "active" | "inactive"
   created_at: string
   last_used: string | null
+  api_key: string | null // 원문 키 저장
 }
 
 export default function APIKeyList() {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
   const [loading, setLoading] = useState(false)
+  const [visibleKeys, setVisibleKeys] = useState<Record<number, boolean>>({})
 
   const fetchApiKeys = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -26,7 +28,7 @@ export default function APIKeyList() {
 
     const { data, error } = await supabase
       .from("api_keys")
-      .select("id, name, status, created_at, last_used")
+      .select("id, name, status, created_at, last_used, api_key") // 원문 포함
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
 
@@ -40,14 +42,12 @@ export default function APIKeyList() {
   const handleCreateApiKey = async () => {
     setLoading(true)
     try {
-      // 1) 세션 가져오기
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
         alert("로그인이 필요합니다.")
         return
       }
 
-      // 2) 서버 API 호출 (토큰 포함)
       const res = await fetch("/api-management/generate-key", {
         method: "POST",
         headers: {
@@ -55,12 +55,10 @@ export default function APIKeyList() {
           Authorization: `Bearer ${session.access_token}`,
         },
       })
-
-      const { apiKey, error } = await res.json()
-      if (error) throw new Error(error)
-
-      // 3) 사용자에게 API 키 표시
-      alert(`새 API 키가 발급되었습니다:\n${apiKey}\n\n※ 복사하지 않으면 다시 확인할 수 없습니다.`)
+      const result=await res.json()
+      if (result.error) throw new Error(result.error)
+        
+      // 발급 직후에는 alert 없음
       fetchApiKeys()
     } catch (err: any) {
       alert("API 키 생성 실패: " + err.message)
@@ -90,8 +88,17 @@ export default function APIKeyList() {
                     {apiKey.last_used ? new Date(apiKey.last_used).toLocaleString() : "없음"}
                   </CardDescription>
                 </div>
-                <Badge variant={apiKey.status === "active" ? "default" : "secondary"}>
-                  {apiKey.status === "active" ? "활성" : "비활성"}
+                <Badge
+                  onClick={() =>
+                    setVisibleKeys((prev) => ({
+                      ...prev,
+                      [apiKey.id]: !prev[apiKey.id],
+                    }))
+                  }
+                  className="cursor-pointer"
+                  variant={visibleKeys[apiKey.id] ? "default" : "secondary"}
+                >
+                  {visibleKeys[apiKey.id] ? "활성(표시중)" : "활성"}
                 </Badge>
               </div>
             </CardHeader>
@@ -99,7 +106,9 @@ export default function APIKeyList() {
               <div className="space-y-2">
                 <Label className="text-sm">API 키</Label>
                 <div className="px-3 py-2 bg-muted rounded-md text-sm font-mono">
-                  {"••••••••••••••••••••••••••"} {/* 실제 키는 DB에 없음 */}
+                  {visibleKeys[apiKey.id]
+                    ? apiKey.api_key || "키 없음"
+                    : "••••••••••••••••••••••••"}
                 </div>
               </div>
             </CardContent>
