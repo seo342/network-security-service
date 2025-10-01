@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Plus } from "lucide-react"
-
+import  ApiKeyCreateDialog from "@/components/api/ApiKeyCreateDialog"
 interface ApiKey {
   id: number
   name: string
@@ -15,7 +15,7 @@ interface ApiKey {
   created_at: string
   last_used: string | null
   api_key: string | null // 원문 키 저장
-  description:string
+  description:string //api 설
 }
 
 export default function APIKeyList() {
@@ -71,10 +71,7 @@ export default function APIKeyList() {
   return (
     <div className="space-y-6">
       <div className="flex justify-end">
-        <Button onClick={handleCreateApiKey} disabled={loading}>
-          <Plus className="h-4 w-4 mr-2" />
-          {loading ? "발급 중..." : "새 API 키 발급"}
-        </Button>
+        <ApiKeyCreateDialog onCreate={fetchApiKeys}/>
       </div>
 
       <div className="grid gap-4">
@@ -105,7 +102,6 @@ export default function APIKeyList() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                <Label className="text-sm">{apiKey.name}</Label>
                 <div className="px-3 py-2 bg-muted rounded-md text-sm font-mono">
                   {visibleKeys[apiKey.id]
                     ? apiKey.api_key || "키 없음"

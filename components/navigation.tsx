@@ -51,7 +51,7 @@ export function Navigation() {
           <Link href="/" className="text-sm font-medium hover:text-primary transition-colors">
             홈
           </Link>
-          <Link href={session ? "/analytics:":"/login"} className="text-sm font-medium hover:text-primary transition-colors">
+          <Link href={session ? "/analytics":"/login"} className="text-sm font-medium hover:text-primary transition-colors">
             분석
           </Link>
           <Link href={session?"/api-management":"/login"} className="text-sm font-medium hover:text-primary transition-colors">

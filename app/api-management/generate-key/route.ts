@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { v4 as uuidv4 } from "uuid"
 import crypto from "crypto"
 import { supabaseAdmin } from "@/lib/supabaseServiceClient"  // ✅ 서버 전용 클라이언트 (service_role 키)
 
@@ -19,6 +18,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid user" }, { status: 401 })
     }
 
+    const {name,description}=await req.json()
+
     // 2) 원본 API 키 생성
     const rawApiKey = crypto.randomBytes(32).toString("hex")
 
@@ -35,7 +36,8 @@ export async function POST(req: Request) {
       .insert([
         {
           user_id: user.id,
-          name: `API Key (${new Date().toLocaleString()})`,
+          name,
+          description,
           status: "active",
           api_key: rawApiKey,  // 원본 키 저장 (나중에 여기 지우고 해시만 남겨도 됨)
           key_hash: key_hash,  // 해시 저장

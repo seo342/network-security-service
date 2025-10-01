@@ -72,13 +72,6 @@ export default function LoginForm() {
               onChange={handleInputChange}/>
           </div>
 
-          {/* 추가 옵션 */}
-          <div className="flex items-center justify-between text-sm">
-            <Link href="/forgot-password" className="text-primary hover:text-primary/80 transition-colors">
-              비밀번호를 잊으셨나요?
-            </Link>
-          </div>
-
           {/* 제출 버튼 */}
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? "로그인 중..." : "로그인"}
