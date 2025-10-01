@@ -16,7 +16,7 @@ interface ApiKey {
   endpoint: string
 }
 
-// Mock 데이터 (실제로는 서버에서 불러오기)
+// Mock 데이터, 더미 데이터임 실제로는 서버에서 불러와야함
 const mockApiKeys: ApiKey[]= [
   {
     id: 1,
