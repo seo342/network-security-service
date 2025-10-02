@@ -20,7 +20,7 @@ export async function GET(req: Request) {
     // 유저의 API 키만 조회
     const { data, error } = await supabaseAdmin
       .from("api_keys")
-      .select("id, name, status, created_at, last_used, api_key, description")
+      .select("id, name, status, created_at, last_used, api_key, description, site_url")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
 
