@@ -1,26 +1,42 @@
-// app/dashboard/traffic/route.ts
-import { NextRequest, NextResponse } from "next/server"
-import zlib from "zlib"
+import { NextResponse } from "next/server"
+import { createClient } from "@supabase/supabase-js"
+import crypto from "crypto"
 
-let latestLogs: any[] = []
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
-export async function POST(req: NextRequest) {
-  try {
-    const rawBuffer = Buffer.from(await req.arrayBuffer())
-    const decompressed = zlib.gunzipSync(rawBuffer)
-    const data = JSON.parse(decompressed.toString("utf-8"))
+const API_KEY_SALT = process.env.API_KEY_SALT!
 
-    if (data?.packets) {
-      latestLogs = data.packets
-      console.log("✅ 새 데이터 수신:", latestLogs.length, "packets")
-    }
-
-    return NextResponse.json({ status: "ok", count: latestLogs.length })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 400 })
-  }
+function hashKey(key: string) {
+  return crypto.createHash("sha256").update(key + API_KEY_SALT).digest("hex")
 }
 
-export async function GET() {
-  return NextResponse.json(latestLogs)
+export async function GET(req: Request) {
+  const authHeader = req.headers.get("authorization")
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return NextResponse.json({ error: "Missing API key" }, { status: 401 })
+  }
+
+  const userKey = authHeader.split(" ")[1]
+  const hashed = hashKey(userKey)
+
+  // DB에 저장된 key_hash 와 비교
+  const { data, error } = await supabase
+    .from("api_keys")
+    .select("id, user_id, status")
+    .eq("key_hash", hashed)
+    .single()
+
+  if (error || !data) {
+    return NextResponse.json({ error: "Invalid API key" }, { status: 403 })
+  }
+
+  // TODO: 실제 트래픽 로그 불러오기
+  const logs = [
+    { timestamp: new Date().toISOString(), src_ip: "192.168.0.1", dst_ip: "8.8.8.8", protocol: "TCP", packet_size: 128 }
+  ]
+
+  return NextResponse.json(logs)
 }

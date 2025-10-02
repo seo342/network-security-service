@@ -12,6 +12,7 @@ import SystemStatus from "@/components/dashboard/SystemStatus"
 import ThreatTable from "@/components/dashboard/ThreatsTable"
 import TrafficChart from "@/components/dashboard/TrafficChart"
 import TrafficLogs from "@/components/dashboard/TrafficLogs"
+import PacketLogFilters, { PacketFilterState } from "@/components/dashboard/PacketLogFilters"
 
 // Mock 데이터
 const generateMockData = () => {
@@ -46,6 +47,12 @@ export default function DashboardPage() {
     threatsDetected: 42,
     blockedIPs: 15,
     uptime: "99.9%",
+  })
+
+  // ✅ 필터 상태
+  const [filters, setFilters] = useState<PacketFilterState>({
+    timeRange: "30m",
+    protocols: { TCP: true, UDP: true, ICMP: true, OTHER: true },
   })
 
   // 실시간 업데이트 시뮬레이션
@@ -89,7 +96,13 @@ export default function DashboardPage() {
 
           {/* 트래픽 로그 */}
           <TabsContent value="logs">
-            <TrafficLogs />
+            <div className="flex gap-4">
+              {/* 좌측: 필터창 */}
+              <PacketLogFilters filters={filters} setFilters={setFilters} />
+
+              {/* 우측: 로그 테이블 */}
+              <TrafficLogs filters={filters} />
+            </div>
           </TabsContent>
 
           {/* 위협 분석 */}
