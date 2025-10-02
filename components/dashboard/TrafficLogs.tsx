@@ -33,18 +33,8 @@ export default function TrafficLogs({ filters }: TrafficLogsProps) {
   useEffect(() => {
     const fetchLogs = async () => {
       try {
-        // ✅ 로컬스토리지나 환경에서 API 키 불러오기
-        const apiKey = localStorage.getItem("api_key")
-        if (!apiKey) {
-          console.warn("API Key 없음 → 로그 요청 불가")
-          return
-        }
-
-        const res = await fetch("/dashboard/traffic", {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,   // ✅ 키 포함
-          },
-        })
+        // ✅ 무조건 무인증 API 호출
+        const res = await fetch("/dashboard/traffic")
 
         if (!res.ok) {
           console.error("로그 요청 실패:", res.status)
@@ -52,7 +42,6 @@ export default function TrafficLogs({ filters }: TrafficLogsProps) {
         }
 
         const data = await res.json()
-        // 서버에서 { logs: [...] } 로 보낸 경우
         setLogs(data.logs || data)
       } catch (e) {
         console.error("Failed to fetch logs:", e)
@@ -64,13 +53,13 @@ export default function TrafficLogs({ filters }: TrafficLogsProps) {
     return () => clearInterval(interval)
   }, [])
 
-  // 필터 적용
+    // 필터 적용
   const filteredLogs = logs.filter((log) => {
-    const proto = ["TCP", "UDP", "ICMP"].includes(log.protocol.toUpperCase())
-      ? log.protocol.toUpperCase()
-      : "OTHER"
+    const protoRaw = log.protocol?.toUpperCase?.() || "OTHER"
+    const proto = ["TCP", "UDP", "ICMP"].includes(protoRaw) ? protoRaw : "OTHER"
     return filters.protocols[proto as keyof typeof filters.protocols]
   })
+
 
   return (
     <Card className="flex-1">
