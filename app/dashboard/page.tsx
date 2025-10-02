@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Navigation } from "@/components/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 // 분리된 대시보드 컴포넌트
@@ -12,6 +11,7 @@ import StatsCards from "@/components/dashboard/StatsCards"
 import SystemStatus from "@/components/dashboard/SystemStatus"
 import ThreatTable from "@/components/dashboard/ThreatsTable"
 import TrafficChart from "@/components/dashboard/TrafficChart"
+import TrafficLogs from "@/components/dashboard/TrafficLogs"
 
 // Mock 데이터
 const generateMockData = () => {
@@ -64,15 +64,15 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background">
-
       <div className="container mx-auto px-4 py-6">
         {/* 상단 통계 */}
         <StatsCards stats={stats} />
 
         {/* 탭 영역 */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">개요</TabsTrigger>
+            <TabsTrigger value="logs">트래픽 로그</TabsTrigger>
             <TabsTrigger value="threats">위협 분석</TabsTrigger>
             <TabsTrigger value="blocked">차단된 IP</TabsTrigger>
             <TabsTrigger value="settings">설정</TabsTrigger>
@@ -87,9 +87,14 @@ export default function DashboardPage() {
             </div>
           </TabsContent>
 
+          {/* 트래픽 로그 */}
+          <TabsContent value="logs">
+            <TrafficLogs />
+          </TabsContent>
+
           {/* 위협 분석 */}
           <TabsContent value="threats">
-            <ThreatTable threats ={mockThreatData} />
+            <ThreatTable threats={mockThreatData} />
           </TabsContent>
 
           {/* 차단된 IP */}
