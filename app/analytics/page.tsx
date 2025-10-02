@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { Navigation } from "@/components/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 // 분리된 기능들 import
@@ -10,7 +9,7 @@ import IncidentList from "@/components/analytics/IncidentList"
 import KeyMetrics from "@/components/analytics/KeyMetrics"
 import PatternAnalysis from "@/components/analytics/PatternAnalysis"
 import ThreatTrends from "@/components/analytics/ThreatTrends"
-
+import AnalysisDashboard from "@/components/analytics/test"
 // --- Mock Data (실제로는 lib/mockData.ts 같은 곳에서 import 권장)
 import { threatTrendData, attackTypeData, countryData, hourlyData, recentIncidents, mockMetrics } from "@/lib/mockData"
 
