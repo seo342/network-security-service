@@ -25,6 +25,7 @@ export default function APIKeyList() {
   const [visibleKeys, setVisibleKeys] = useState<Record<number, boolean>>({})
   const [testResult, setTestResult] = useState<Record<number, string>>({})
   const [editingSite, setEditingSite] = useState<Record<number, string>>({})
+  const [loading,setLoading]=useState(false)
 
   // 🔒 내부 API Route 호출 (DB에서 키 목록 가져오기)
   const fetchApiKeys = async () => {
@@ -100,6 +101,31 @@ export default function APIKeyList() {
       delete newState[id]
       return newState
     })
+  }
+  //API키 삭제
+  const handleDeleteAPI=async (id:number) => {
+    if(!confirm("정말 이 API 키를 삭제하시겠습니까?")) return
+    setLoading(true)
+
+    try{
+      const {data:{session}}=await supabase.auth.getSession()
+      if(!session) return
+      
+      const res=await fetch(`/api-management/keys/${id}`,{
+        method:"DELETE",
+        headers:{
+          Authorization:`Bearer ${session.access_token}`,
+        },
+      })
+      if(!res.ok) throw new Error("API 키 삭제 실패")
+      await fetchApiKeys() //삭제 후 목록 갱신
+    }
+    catch(err){
+      console.error("API 키 삭제 실패",err)
+    }
+    finally{
+      setLoading(false)
+    }
   }
   // ✅ 실제 사이트 API 연결 테스트
 const handleTestApiKey = async (id: number) => {
@@ -243,6 +269,14 @@ const handleTestApiKey = async (id: number) => {
                   <p className="text-xs mt-2 text-muted-foreground">{testResult[apiKey.id]}</p>
                 )}
               </div>
+              {/*API 키 삭제*/}
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={()=>handleDeleteAPI(apiKey.id)}
+                disabled={loading}>
+                  API 키 삭제
+                </Button>
             </CardContent>
           </Card>
         ))}
