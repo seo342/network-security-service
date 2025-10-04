@@ -46,7 +46,7 @@ export default function ApiKeyCreateDialog({ onCreate }: ApiKeyCreateDialogProps
       }
 
       // name + description 같이 보냄
-      const res = await fetch("/api-management/generate-key", {
+      const res = await fetch("/api-management/keys", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
