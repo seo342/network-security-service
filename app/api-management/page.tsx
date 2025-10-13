@@ -16,30 +16,6 @@ interface ApiKey {
   endpoint: string
 }
 
-// Mock 데이터, 더미 데이터임 실제로는 서버에서 불러와야함
-const mockApiKeys: ApiKey[]= [
-  {
-    id: 1,
-    name: "Production API Key",
-    key: "sk_live_krqwokk...",
-    created: "2025/9/27",
-    lastUsed: "2시간 전",
-    requests: 15420,
-    status: "active",
-    endpoint: "https://api.securenet.ai/v1",
-  },
-  {
-    id: 2,
-    name: "Development API Key",
-    key: "sk_test_abc123...",
-    created: "2025/9/20",
-    lastUsed: "1일 전",
-    requests: 2340,
-    status: "active",
-    endpoint: "https://api.securenet.ai/v1",
-  },
-] as const
-
 export default function ApiManagementPage() {
   return (
     <div className="min-h-screen bg-background">
@@ -66,7 +42,7 @@ export default function ApiManagementPage() {
           </TabsContent>
 
           <TabsContent value="usage">
-            <ApiUsage apiKeys={mockApiKeys} />
+            <ApiUsage/>
           </TabsContent>
         </Tabs>
       </div>

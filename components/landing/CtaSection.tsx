@@ -25,7 +25,7 @@ export default function CtaSection() {
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button size="lg" asChild>
-            <Link href={session ? "/signup" : "/login"}>무료 체험 시작</Link>
+            <Link href={session ? "/dashboard" : "/login"}>무료 체험 시작</Link>
           </Button>
           <Button size="lg" variant="outline" asChild>
             <Link href={session ? "/api-management" : "/login"}>API 관리</Link>
