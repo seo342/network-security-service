@@ -17,15 +17,14 @@ interface ApiKey {
   last_used: string | null
   api_key: string | null
   description: string
-  site_url: string | null   // ✅ 사이트 연결
+  site_url: string | null
 }
 
 export default function APIKeyList() {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
   const [visibleKeys, setVisibleKeys] = useState<Record<number, boolean>>({})
-  const [testResult, setTestResult] = useState<Record<number, string>>({})
   const [editingSite, setEditingSite] = useState<Record<number, string>>({})
-  const [loading,setLoading]=useState(false)
+  const [loading, setLoading] = useState(false)
 
   // 🔒 내부 API Route 호출 (DB에서 키 목록 가져오기)
   const fetchApiKeys = async () => {
@@ -102,84 +101,30 @@ export default function APIKeyList() {
       return newState
     })
   }
-  //API키 삭제
-  const handleDeleteAPI=async (id:number) => {
-    if(!confirm("정말 이 API 키를 삭제하시겠습니까?")) return
+
+  // ✅ API 키 삭제
+  const handleDeleteAPI = async (id: number) => {
+    if (!confirm("정말 이 API 키를 삭제하시겠습니까?")) return
     setLoading(true)
 
-    try{
-      const {data:{session}}=await supabase.auth.getSession()
-      if(!session) return
-      
-      const res=await fetch(`/api-management/keys/${id}`,{
-        method:"DELETE",
-        headers:{
-          Authorization:`Bearer ${session.access_token}`,
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+
+      const res = await fetch(`/api-management/keys/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
         },
       })
-      if(!res.ok) throw new Error("API 키 삭제 실패")
-      await fetchApiKeys() //삭제 후 목록 갱신
-    }
-    catch(err){
-      console.error("API 키 삭제 실패",err)
-    }
-    finally{
+      if (!res.ok) throw new Error("API 키 삭제 실패")
+      await fetchApiKeys()
+    } catch (err) {
+      console.error("API 키 삭제 실패", err)
+    } finally {
       setLoading(false)
     }
   }
-  // ✅ 실제 사이트 API 연결 테스트
-const handleTestApiKey = async (id: number) => {
-  const target = apiKeys.find((k) => k.id === id)
-  if (!target?.site_url || !target.api_key) {
-    setTestResult((prev) => ({
-      ...prev,
-      [id]: "❌ site_url 또는 api_key 없음",
-    }))
-    return
-  }
-
-  try {
-    // 🔑 site_url 끝에 "/" 있으면 제거하고 /api/test 붙이기
-    const url = target.site_url.replace(/\/$/, "") + "/api/test"
-
-    console.log("🔗 Test request URL:", url) // 확인용
-
-    const res = await fetch(url, {
-      method: "POST", // 더미 라우트에 맞게 GET/POST 변경 가능
-      headers: {
-        Authorization: `Bearer ${target.api_key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ test: "ping" }),
-    })
-
-    // 서버가 HTML을 리턴하면 JSON 파싱 시 오류가 납니다 → 방어 코드 추가
-    const text = await res.text()
-    let data: any
-    try {
-      data = JSON.parse(text)
-    } catch {
-      throw new Error("서버에서 JSON이 아닌 응답을 반환함: " + text.slice(0, 100))
-    }
-
-    if (!res.ok) {
-      setTestResult((prev) => ({
-        ...prev,
-        [id]: `❌ 실패 (${data.error || res.status})`,
-      }))
-      return
-    }
-
-    setTestResult((prev) => ({
-      ...prev,
-      [id]: `✅ 성공 (${data.message || "연결 확인"})`,
-    }))
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err)
-    setTestResult((prev) => ({ ...prev, [id]: "❌ 오류: " + message }))
-  }
-}
-
 
   return (
     <div className="space-y-6">
@@ -222,7 +167,7 @@ const handleTestApiKey = async (id: number) => {
 
                 <Label className="text-sm">{apiKey.description}</Label>
 
-                {/* 🔗 사이트 연결 (수정 가능) */}
+                {/* 🔗 사이트 연결 */}
                 <div className="flex gap-2 items-center">
                   <Input
                     placeholder="사이트 URL 입력"
@@ -234,7 +179,7 @@ const handleTestApiKey = async (id: number) => {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => handleSaveSite(apiKey.id)} //POST
+                    onClick={() => handleSaveSite(apiKey.id)}
                   >
                     {apiKey.site_url ? "수정" : "연결"}
                   </Button>
@@ -254,29 +199,18 @@ const handleTestApiKey = async (id: number) => {
                     🔗 현재 연결된 사이트: {apiKey.site_url}
                   </p>
                 )}
-
-                {/* API 연결 테스트 */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleTestApiKey(apiKey.id)}
-                >
-                  연결 테스트
-                </Button>
-
-                {/* 결과 표시 */}
-                {testResult[apiKey.id] && (
-                  <p className="text-xs mt-2 text-muted-foreground">{testResult[apiKey.id]}</p>
-                )}
               </div>
-              {/*API 키 삭제*/}
+
+              {/* API 키 삭제 */}
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={()=>handleDeleteAPI(apiKey.id)}
-                disabled={loading}>
-                  API 키 삭제
-                </Button>
+                onClick={() => handleDeleteAPI(apiKey.id)}
+                disabled={loading}
+                className="mt-3"
+              >
+                API 키 삭제
+              </Button>
             </CardContent>
           </Card>
         ))}
