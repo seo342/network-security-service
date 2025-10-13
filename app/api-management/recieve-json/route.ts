@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { supabaseAdmin } from "@/lib/supabaseServiceClient"
 
-// TypeScript 인터페이스
 interface FlowInfo {
   src_ip?: string
   dst_ip?: string
@@ -28,27 +28,47 @@ export async function POST(req: Request) {
   try {
     const body: DetectionData = await req.json()
 
-    // Authorization 헤더에서 인증키 추출
+    // Authorization 헤더에서 복원된 api_key 추출
     const authHeader = req.headers.get("authorization")
-    const authKey = authHeader?.split(" ")[1] || null
+    const apiKey = authHeader?.split(" ")[1] || null
+    if (!apiKey)
+      return NextResponse.json({ error: "Missing API key" }, { status: 401 })
 
-    // 1️⃣ auth_key 검증 및 api_keys.id 조회
+    // ✅ 환경 변수에서 salt 가져오기 (MASTER_SECRET_KEY 대신)
+    const secret = process.env.API_KEY_SALT
+    if (!secret)
+      return NextResponse.json({ error: "Server misconfigured: missing API_KEY_SALT" }, { status: 500 })
+
+    // ✅ api_keys 테이블에서 모든 active 키 조회
+    const { data: allKeys, error: keyError } = await supabaseAdmin
+      .from("api_keys")
+      .select("id, random_value, status")
+
+    if (keyError) throw keyError
+    if (!allKeys || allKeys.length === 0)
+      throw new Error("No API keys found")
+
+    // ✅ apiKey 해시 비교
     let apiKeyId: number | null = null
-    if (authKey) {
-      const { data: keyData, error: keyError } = await supabaseAdmin
-        .from("api_keys")
-        .select("id")
-        .eq("auth_key", authKey)
-        .single()
+    for (const k of allKeys) {
+      if (k.status !== "active") continue
+      const hash = crypto
+        .createHash("sha256")
+        .update(k.random_value + secret)
+        .digest("hex")
 
-      if (keyError) {
-        console.warn("⚠️ 인증키 조회 실패:", keyError.message)
-      } else {
-        apiKeyId = keyData?.id ?? null
+      if (hash === apiKey) {
+        apiKeyId = k.id
+        break
       }
     }
 
-    // 구조 분해
+    if (!apiKeyId) {
+      console.warn("⚠️ 유효하지 않은 API 키:", apiKey)
+      return NextResponse.json({ error: "Invalid API key" }, { status: 403 })
+    }
+
+    // --- 데이터 구조 분해 ---
     const {
       detection_result,
       confidence,
@@ -59,31 +79,30 @@ export async function POST(req: Request) {
       packet_count,
       byte_count,
       timestamp,
-      top_candidates,
     } = body
 
     const src_ip = flow_info?.src_ip ?? null
     const dst_ip = flow_info?.dst_ip ?? null
-    const proto = flow_info?.proto ?? null
 
-    // 2️⃣ 심각도(severity) 판별
+    // --- 심각도(severity) ---
     const severity =
       detection_result === "BENIGN"
-        ? "Low"
+        ? "낮음"
         : confidence >= 0.8
-        ? "High"
-        : "Medium"
+        ? "높음"
+        : "중간"
 
-    // 3️⃣ 상태(status)
-    const status = "Detected"
+    // --- 상태, 유형 ---
+    const status = "진행중"
+    const type =
+      category === "Normal" || category === "BENIGN"
+        ? "정상"
+        : category || "알 수 없음"
 
-    // 4️⃣ type = category
-    const type = category || "Unknown"
-
-    // 5️⃣ details (JSON 문자열화)
+    // --- 상세(JSON) ---
     const details = JSON.stringify(body)
 
-    // ✅ incidents 테이블 삽입
+    // ✅ incidents 삽입
     const { error: incidentError } = await supabaseAdmin.from("incidents").insert([
       {
         time: timestamp,
@@ -94,16 +113,16 @@ export async function POST(req: Request) {
         details,
       },
     ])
-    if (incidentError) throw new Error(`incidents insert: ${incidentError.message}`)
+    if (incidentError)
+      throw new Error(`incidents insert: ${incidentError.message}`)
 
-    // ✅ attack_types 업데이트 (해당 공격 유형 count +1)
-    if (type !== "Normal" && type !== "BENIGN") {
-      // 이미 존재하면 count +1, 없으면 새로 생성
+    // ✅ attack_types 업데이트
+    if (type !== "정상") {
       const { data: existing } = await supabaseAdmin
         .from("attack_types")
         .select("id, count")
         .eq("type", type)
-        .single()
+        .maybeSingle()
 
       if (existing) {
         await supabaseAdmin
@@ -117,13 +136,13 @@ export async function POST(req: Request) {
       }
     }
 
-    // ✅ traffic_logs 업데이트 (일자별 요청/위협 카운트)
+    // ✅ traffic_logs 업데이트
     const date = timestamp.split("T")[0]
     const { data: log } = await supabaseAdmin
       .from("traffic_logs")
       .select("id, requests, threats")
       .eq("time", date)
-      .single()
+      .maybeSingle()
 
     if (log) {
       await supabaseAdmin
@@ -145,36 +164,25 @@ export async function POST(req: Request) {
         ])
     }
 
-    // ✅ api_usage 로그 기록 (해당 키로 요청한 경우)
-    if (apiKeyId) {
-      const { data: usage } = await supabaseAdmin
-        .from("api_usage")
-        .select("id, requests, threats")
-        .eq("api_key_id", apiKeyId)
-        .eq("endpoint", "analyze")
-        .single()
+    // ✅ api_usage 기록
+    console.log("✅ api_usage logging 시작:", apiKeyId)
 
-      if (usage) {
-        await supabaseAdmin
-          .from("api_usage")
-          .update({
-            requests: usage.requests + 1,
-            threats: detection_result === "BENIGN" ? usage.threats : usage.threats + 1,
-          })
-          .eq("id", usage.id)
-      } else {
-        await supabaseAdmin
-          .from("api_usage")
-          .insert([
-            {
-              api_key_id: apiKeyId,
-              endpoint: "analyze",
-              requests: 1,
-              threats: detection_result === "BENIGN" ? 0 : 1,
-            },
-          ])
-      }
-    }
+    const { data: usageData, error: usageError } = await supabaseAdmin
+      .from("api_usage")
+      .upsert(
+        {
+          api_key_id: apiKeyId,
+          endpoint: "analyze",
+          requests: 1,
+          threats: detection_result === "BENIGN" ? 0 : 1,
+        },
+        { onConflict: "api_key_id,endpoint" }
+      )
+      .select()
+
+    if (usageError)
+      console.error("⚠️ api_usage upsert 실패:", usageError.message)
+    else console.log("✅ api_usage 결과:", usageData)
 
     console.log(`✅ [INCIDENT SAVED] ${type} | ${src_ip} → ${dst_ip}`)
     return NextResponse.json({
@@ -182,22 +190,7 @@ export async function POST(req: Request) {
       message: "Incidents + 통계 + 사용 로그 저장 완료",
     })
   } catch (err: any) {
-    console.error("❌ 에러 발생:", err.message)
+    console.error("❌ recieve-json 에러:", err.message)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
-}
-
-// 최근 10개 incidents 조회용 (GET)
-export async function GET() {
-  const { data, error } = await supabaseAdmin
-    .from("incidents")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(10)
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  return NextResponse.json(data)
 }

@@ -16,10 +16,10 @@ export async function GET(req: Request) {
     if (userError || !user)
       return NextResponse.json({ error: "Invalid user" }, { status: 401 })
 
-    // ✅ 유저의 API 키 목록 조회
+    // ✅ 유저의 API 키 목록 조회 (site_url 제거됨)
     const { data, error } = await supabaseAdmin
       .from("api_keys")
-      .select("id, name, status, created_at, last_used, description, site_url")
+      .select("id, name, status, created_at, last_used, description")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
 
