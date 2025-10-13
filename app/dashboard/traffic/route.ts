@@ -1,50 +1,30 @@
 import { NextResponse } from "next/server"
-import zlib from "zlib"
+import { supabaseAdmin } from "@/lib/supabaseServiceClient"
 
-// 서버 메모리에 최근 로그 저장 (임시 저장소)
-let latestLogs: any[] = []
-
-// 🚀 Python agent → POST
-export async function POST(req: Request) {
+export async function GET() {
   try {
-    // body는 gzip 압축 → Buffer로 변환
-    const arrayBuffer = await req.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
+    // ✅ 트래픽 로그
+    const { data: trafficData, error: trafficError } = await supabaseAdmin
+      .from("traffic_logs")
+      .select("time, requests, threats")
+      .order("time", { ascending: true })
+      .limit(50)
+    if (trafficError) throw trafficError
 
-    // gzip 해제
-    const decompressed = zlib.gunzipSync(buffer).toString("utf-8")
-    const payload = JSON.parse(decompressed)
+    // ✅ 위협 로그 (최근 50개)
+    const { data: incidentData, error: incidentError } = await supabaseAdmin
+      .from("incidents")
+      .select("id, time, type, source_ip, severity, status")
+      .order("time", { ascending: false })
+      .limit(50)
+    if (incidentError) throw incidentError
 
-    console.log("✅ Received payload:", payload)
-
-    // 받은 패킷 로그 저장
-    if (payload.packets && Array.isArray(payload.packets)) {
-      latestLogs = payload.packets
-    }
-
-    // 에이전트한테 OK 응답
-    return NextResponse.json({ ok: true, received: payload.packets?.length || 0 })
-  } catch (e) {
-    console.error("❌ Failed to handle POST:", e)
-    return NextResponse.json({ error: "Invalid payload" }, { status: 400 })
+    return NextResponse.json({
+      logs: trafficData,
+      incidents: incidentData,
+    })
+  } catch (err: any) {
+    console.error("❌ traffic/incidents fetch error:", err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
-}
-
-// 🚀 프론트엔드 → GET
-export async function GET(req: Request) {
-  // latestLogs 가 비어있으면 샘플 로그 반환
-  const logs = latestLogs.length > 0 ? latestLogs : [
-    {
-      timestamp: new Date().toISOString(),
-      src_ip: "192.168.0.1",
-      dst_ip: "8.8.8.8",
-      protocol: "TCP",
-      tcp_flags: "SYN",
-      tcp_seq: 12345,
-      payload: "TestPayload",
-      packet_size: 128,
-    },
-  ]
-
-  return NextResponse.json({ logs })
 }

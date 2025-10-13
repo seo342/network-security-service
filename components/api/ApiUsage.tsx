@@ -28,12 +28,12 @@ export default function ApiUsage() {
     async function fetchData() {
       const { data } = await supabase
         .from("api_keys")
-        .select("id, name, api_key, api_usage(requests)")
+        .select("id, name, auth_key, api_usage(requests)")
       setApiKeys(
         data?.map((i: any) => ({
           id: i.id,
           name: i.name,
-          key: i.api_key,
+          key: i.auth_key,
           requests: i.api_usage?.reduce((s: number, u: any) => s + (u.requests || 0), 0) || 0,
         })) || []
       )
