@@ -56,60 +56,6 @@ export default function APIKeyList() {
     fetchApiKeys()
   }, [])
 
-  // ✅ 사이트 연결 저장
-  const handleSaveSite = async (id: number) => {
-    const site_url = editingSite[id]
-    if (!site_url) return
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-
-      const res = await fetch(`/api-management/keys/${id}/site`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ site_url }),
-      })
-
-      if (!res.ok) throw new Error("사이트 연결 실패")
-      await fetchApiKeys()
-    } catch (err) {
-      console.error("사이트 연결 실패:", err)
-    }
-
-    setEditingSite((prev) => {
-      const newState = { ...prev }
-      delete newState[id]
-      return newState
-    })
-  }
-
-  // ✅ 사이트 URL 삭제
-  const handleDeleteSite = async (id: number) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-
-      const res = await fetch(`/api-management/keys/${id}/site`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      })
-
-      if (!res.ok) throw new Error("사이트 삭제 실패")
-      await fetchApiKeys()
-    } catch (err) {
-      console.error("사이트 삭제 실패:", err)
-    }
-
-    setEditingSite((prev) => {
-      const newState = { ...prev }
-      delete newState[id]
-      return newState
-    })
-  }
 
   // ✅ API 키 삭제
   const handleDeleteAPI = async (id: number) => {
@@ -224,39 +170,6 @@ export default function APIKeyList() {
                 </div>
 
                 <Label className="text-sm">{apiKey.description}</Label>
-
-                {/* 🔗 사이트 연결 */}
-                <div className="flex gap-2 items-center">
-                  <Input
-                    placeholder="사이트 URL 입력"
-                    value={editingSite[apiKey.id] ?? apiKey.site_url ?? ""}
-                    onChange={(e) =>
-                      setEditingSite((prev) => ({ ...prev, [apiKey.id]: e.target.value }))
-                    }
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleSaveSite(apiKey.id)}
-                  >
-                    {apiKey.site_url ? "수정" : "연결"}
-                  </Button>
-                  {apiKey.site_url && (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => handleDeleteSite(apiKey.id)}
-                    >
-                      삭제
-                    </Button>
-                  )}
-                </div>
-
-                {apiKey.site_url && (
-                  <p className="text-xs text-muted-foreground">
-                    🔗 현재 연결된 사이트: {apiKey.site_url}
-                  </p>
-                )}
               </div>
             </CardContent>
           </Card>
