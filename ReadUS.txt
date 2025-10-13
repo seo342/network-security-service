@@ -1,0 +1,40 @@
+package com.example.myapplication;
+
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteOpenHelper;
+import android.os.Bundle;
+
+import androidx.activity.EdgeToEdge;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.constraintlayout.motion.widget.MotionLayout;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+
+import com.google.android.material.button.MaterialButton;
+
+public class MainActivity extends AppCompatActivity {
+    myDBhelper myhelper;
+    MaterialButton btnAddWord,btnList,btnQuiz,toolbar;
+    
+
+    @Override
+    public void onCreate(Bundle savedInstanceState){
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+    }
+    public class myDBhelper extends SQLiteOpenHelp{
+        pulic myDBHelper(Context context){
+            super(context,"groupDB",null,1);
+        }
+        @Override
+        public void onCreate(SQLiteDatabase db){
+            db.execSQL("create table gruopTBL(gName char(20) primary key,gNumber int);");
+        }
+        @Override
+        public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion){
+            db.execSQL("drop table if exists groupTBL");
+            onCreate(db);
+        }
+    }
+}
