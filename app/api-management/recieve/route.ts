@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 const { data: apiKeyRow, error: keyError } = await supabaseAdmin
   .from("api_keys")
   .select("id")
-  .eq("api_key", auth_key)
+  .eq("auth_key", auth_key)
   .single()
 
 if (keyError || !apiKeyRow) {
