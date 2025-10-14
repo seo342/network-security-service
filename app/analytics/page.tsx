@@ -9,7 +9,6 @@ import IncidentList from "@/components/analytics/IncidentList"
 import KeyMetrics from "@/components/analytics/KeyMetrics"
 import PatternAnalysis from "@/components/analytics/PatternAnalysis"
 import ThreatTrends from "@/components/analytics/ThreatTrends"
-import AnalysisDashboard from "@/components/analytics/test"
 // --- Mock Data (실제로는 lib/mockData.ts 같은 곳에서 import 권장)
 import { threatTrendData, attackTypeData, countryData, hourlyData, recentIncidents, mockMetrics } from "@/lib/mockData"
 
@@ -68,7 +67,7 @@ export default function AnalyticsPage() {
 
           {/* 패턴 분석 */}
           <TabsContent value="patterns">
-            <PatternAnalysis data={hourlyData} />
+            <PatternAnalysis />
           </TabsContent>
 
           {/* 보안 사고 */}

@@ -29,7 +29,7 @@ export default function ThreatTable() {
          + `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
   }
 
-  // ✅ Supabase incidents 데이터 fetch
+  // ✅ incidents 데이터 fetch
   const fetchThreats = async () => {
     try {
       const res = await fetch("/dashboard/incidents")
@@ -41,9 +41,9 @@ export default function ThreatTable() {
         id: item.id,
         time: formatTime(item.time),
         ip: item.source_ip,
-        type: item.type,
-        status: item.status,
-        severity: item.severity,
+        type: item.category || "Unknown",
+        status: item.status || "-",
+        severity: item.severity || "-",
       }))
 
       setThreats(mapped)
@@ -94,7 +94,12 @@ export default function ThreatTable() {
                 </tr>
               ) : (
                 threats.map((threat) => (
-                  <tr key={threat.id} className="border-b border-border/50 hover:bg-muted/30">
+                  <tr
+                    key={threat.id}
+                    className={`border-b border-border/50 hover:bg-muted/30 ${
+                      threat.severity === "높음" ? "bg-red-50" : ""
+                    }`}
+                  >
                     <td className="p-3 text-sm">{threat.time}</td>
                     <td className="p-3 font-mono text-sm">{threat.ip}</td>
                     <td className="p-3 text-sm">{threat.type}</td>
