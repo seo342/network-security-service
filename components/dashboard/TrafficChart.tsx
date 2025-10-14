@@ -19,19 +19,18 @@ interface ChartData {
 }
 
 /**
- * ✅ 실시간 트래픽 모니터링 차트 (DB 직접 연결 버전)
- * - Supabase traffic_logs 테이블에서 시간별 요청/위협 수를 가져옴
+ * ✅ 실시간 트래픽 모니터링 차트 (traffic_logs 기반)
+ * - Supabase traffic_logs 테이블에서 요청/위협 수 가져옴
  * - 5초마다 자동 갱신
  */
 export default function TrafficChart() {
   const [data, setData] = useState<ChartData[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  // ✅ PostgreSQL timestamp → HH:mm 포맷 변환
+  // ✅ PostgreSQL timestamp → HH:mm 포맷 변환 (로컬 시간대 반영)
   const formatTime = (timestamp: string) => {
     if (!timestamp) return "-"
-    const iso = timestamp.replace(" ", "T") // "2025-10-13 00:00:00+00" → "2025-10-13T00:00:00+00"
-    const date = new Date(iso)
+    const date = new Date(timestamp)
     if (isNaN(date.getTime())) return "-"
     const pad = (n: number) => n.toString().padStart(2, "0")
     return `${pad(date.getHours())}:${pad(date.getMinutes())}`
@@ -45,11 +44,14 @@ export default function TrafficChart() {
       const json = await res.json()
       const logs = json.logs || []
 
-      const chartData = logs.map((log: any) => ({
-        time: formatTime(log.time),
-        requests: log.requests,
-        threats: log.threats,
-      }))
+      // 최근 20개까지만
+      const chartData = logs
+        .map((log: any) => ({
+          time: formatTime(log.time),
+          requests: Number(log.requests) || 0,
+          threats: Number(log.threats) || 0,
+        }))
+        .reverse() // 오래된 → 최근 순서
 
       setData(chartData)
       setError(null)
@@ -96,6 +98,7 @@ export default function TrafficChart() {
                 stroke="hsl(var(--primary))"
                 strokeWidth={2}
                 name="요청 수"
+                dot={false}
               />
               <Line
                 type="monotone"
@@ -103,6 +106,7 @@ export default function TrafficChart() {
                 stroke="hsl(var(--destructive))"
                 strokeWidth={2}
                 name="위협 탐지"
+                dot={false}
               />
             </LineChart>
           </ResponsiveContainer>

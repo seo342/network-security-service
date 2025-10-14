@@ -1,8 +1,35 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Clock, TrendingUp, Globe, AlertTriangle, Shield } from "lucide-react"
-import { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip } from "recharts"
+import React, { useEffect, useState, useMemo } from "react"
+import { createClient } from "@supabase/supabase-js"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  Clock,
+  TrendingUp,
+  Globe,
+  AlertTriangle,
+  Shield,
+} from "lucide-react"
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+} from "recharts"
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 interface HourlyData {
   hour: string
@@ -10,14 +37,111 @@ interface HourlyData {
   normal: number
 }
 
-interface PatternAnalysisProps {
-  data: HourlyData[]
-}
+function PatternAnalysisInner() {
+  const [data, setData] = useState<HourlyData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-export default function PatternAnalysis({ data }: PatternAnalysisProps) {
+  // ✅ 데이터 가져오기
+  const fetchPatternData = async () => {
+    try {
+      const { data: result, error } = await supabase
+        .from("hourly_patterns")
+        .select("hour, threats, normal")
+        .order("hour", { ascending: true })
+
+      if (error) throw error
+
+      const formatted = (result || []).map((item) => ({
+        hour: `${item.hour}시`,
+        threats: item.threats ?? 0,
+        normal: item.normal ?? 0,
+      }))
+
+      // ✅ 이전 데이터와 비교 → 바뀐 경우에만 setData
+      setData((prev) =>
+        JSON.stringify(prev) === JSON.stringify(formatted) ? prev : formatted
+      )
+
+      setError(null)
+    } catch (err: any) {
+      console.error("❌ hourly_patterns fetch error:", err.message)
+      setError("패턴 데이터를 불러오지 못했습니다.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ✅ 초기 로드 + 주기적 갱신
+  useEffect(() => {
+    fetchPatternData()
+    const interval = setInterval(fetchPatternData, 8000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // ✅ Supabase 실시간 감시
+  useEffect(() => {
+    const channel = supabase
+      .channel("realtime:hourly_patterns")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "hourly_patterns" },
+        (payload) => {
+          const newItem = payload.new
+          setData((prev) => {
+            const updated = [...prev]
+            const hourLabel = `${newItem.hour}시`
+            const index = updated.findIndex((d) => d.hour === hourLabel)
+
+            if (index !== -1) {
+              updated[index] = {
+                hour: hourLabel,
+                threats: newItem.threats ?? 0,
+                normal: newItem.normal ?? 0,
+              }
+            } else {
+              updated.push({
+                hour: hourLabel,
+                threats: newItem.threats ?? 0,
+                normal: newItem.normal ?? 0,
+              })
+            }
+
+            return JSON.stringify(prev) === JSON.stringify(updated)
+              ? prev
+              : updated
+          })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [])
+
+  // ✅ useMemo로 안정적인 참조 유지
+  const chartData = useMemo(() => data, [data])
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-[400px] text-muted-foreground">
+        ⏳ 시간대별 패턴 분석 로딩 중...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex justify-center items-center h-[400px] text-red-500">
+        ⚠️ {error}
+      </div>
+    )
+  }
+
   return (
-    <div className="space-y-6">
-      {/* 시간대별 위협 패턴 */}
+    <div className="space-y-6 transition-all">
+      {/* ▣ 시간대별 위협 패턴 */}
       <Card>
         <CardHeader>
           <CardTitle>시간대별 위협 패턴</CardTitle>
@@ -25,7 +149,7 @@ export default function PatternAnalysis({ data }: PatternAnalysisProps) {
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={data}>
+            <AreaChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis dataKey="hour" stroke="hsl(var(--muted-foreground))" />
               <YAxis stroke="hsl(var(--muted-foreground))" />
@@ -40,27 +164,30 @@ export default function PatternAnalysis({ data }: PatternAnalysisProps) {
                 type="monotone"
                 dataKey="normal"
                 stackId="1"
-                stroke="#ef4444"
-                fill="#ef4444"
+                stroke="#3b82f6"
+                fill="#3b82f6"
                 fillOpacity={0.3}
                 name="정상 트래픽"
+                isAnimationActive={true}
               />
               <Area
                 type="monotone"
                 dataKey="threats"
                 stackId="2"
-                stroke="#3b82f6"
-                fill="#3b82f6"
+                stroke="#ef4444"
+                fill="#ef4444"
                 fillOpacity={0.6}
                 name="위협 트래픽"
+                isAnimationActive={true}
               />
             </AreaChart>
           </ResponsiveContainer>
         </CardContent>
       </Card>
 
-      {/* AI 분석 인사이트 & 권장사항 */}
+      {/* ▣ AI 분석 인사이트 & 권장사항 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 주요 인사이트 */}
         <Card>
           <CardHeader>
             <CardTitle>주요 패턴 인사이트</CardTitle>
@@ -74,7 +201,7 @@ export default function PatternAnalysis({ data }: PatternAnalysisProps) {
                   <span className="font-medium">피크 시간대</span>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  오전 9-11시와 오후 2-4시에 위협 활동이 가장 활발합니다.
+                  오전 9–11시와 오후 2–4시에 위협 활동이 가장 활발합니다.
                 </p>
               </div>
               <div className="p-4 bg-muted/30 rounded-lg">
@@ -82,7 +209,9 @@ export default function PatternAnalysis({ data }: PatternAnalysisProps) {
                   <TrendingUp className="h-4 w-4 text-destructive" />
                   <span className="font-medium">증가 추세</span>
                 </div>
-                <p className="text-sm text-muted-foreground">DDoS 공격이 지난 주 대비 15% 증가했습니다.</p>
+                <p className="text-sm text-muted-foreground">
+                  DDoS 공격이 지난 주 대비 약 15% 증가했습니다.
+                </p>
               </div>
               <div className="p-4 bg-muted/30 rounded-lg">
                 <div className="flex items-center gap-2 mb-2">
@@ -97,6 +226,7 @@ export default function PatternAnalysis({ data }: PatternAnalysisProps) {
           </CardContent>
         </Card>
 
+        {/* 예측 분석 */}
         <Card>
           <CardHeader>
             <CardTitle>예측 분석</CardTitle>
@@ -132,3 +262,5 @@ export default function PatternAnalysis({ data }: PatternAnalysisProps) {
     </div>
   )
 }
+
+export default React.memo(PatternAnalysisInner)
