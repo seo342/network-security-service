@@ -1,23 +1,6 @@
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabaseServiceClient"
 
-/**
- * 🔹 분석 서버 → 분석 결과 수신 엔드포인트
- * 요청 body 예시:
- * {
- *   "auth_key": "0be6da27bbfd332aa76763f1497d9e852fa41c452ea2e29c",
- *   "detection_result": "BENIGN",
- *   "confidence": 0.79,
- *   "Destination_Port": 443,
- *   "category": "Normal",
- *   "flow_info": { "src_ip": "...", "dst_ip": "...", "proto": 17 },
- *   "flow_duration": 15.5,
- *   "packet_count": 9,
- *   "byte_count": 2232,
- *   "timestamp": "2025-10-13T07:13:23.035865+00:00",
- *   "top_candidates": [ ... ]
- * }
- */
 export async function POST(req: Request) {
   try {
     const body = await req.json()
@@ -33,6 +16,7 @@ export async function POST(req: Request) {
       byte_count,
       timestamp,
       top_candidates,
+      country,
     } = body
 
     // ✅ 1. auth_key 검증
@@ -54,7 +38,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "API key inactive" }, { status: 403 })
     }
 
-    // ✅ 2. 심각도(severity) 자동 분류
+    // ✅ 2. 심각도 자동 분류
     const severity =
       detection_result === "BENIGN"
         ? "low"
@@ -66,7 +50,7 @@ export async function POST(req: Request) {
 
     const status = detection_result === "BENIGN" ? "resolved" : "active"
 
-    // ✅ 3. incidents 테이블에 삽입 (트리거 자동 실행)
+    // ✅ 3. incidents 삽입
     const { error: insertError } = await supabaseAdmin.from("incidents").insert([
       {
         time: timestamp || new Date().toISOString(),
@@ -79,31 +63,32 @@ export async function POST(req: Request) {
         destination_ip: flow_info?.dst_ip,
         destination_port: Destination_Port,
         protocol: flow_info?.proto,
+        country: country || null,
         flow_duration,
         packet_count,
         byte_count,
         flow_info,
         top_candidates,
-        api_key_id: apiKeyData.id, // ✅ FK 매핑
+        auth_key, // ✅ 트리거가 이걸로 API key를 찾음
       },
     ])
 
     if (insertError) {
-      console.error("❌ incidents insert error:", insertError)
+      console.error("❌ [incidents insert error]:", insertError)
       return NextResponse.json({ error: insertError.message }, { status: 500 })
     }
 
-    // ⚡ 이제 트리거가 자동으로 아래 테이블을 갱신합니다:
-    // traffic_logs, attack_types, hourly_patterns, country_threats, metrics_summary, api_usage
-
+    // ✅ 성공 응답
     return NextResponse.json({
-      message: "✅ Incident successfully logged (trigger updated related tables)",
+      message: "✅ Incident logged successfully — triggers updated all related tables.",
       api_key_id: apiKeyData.id,
       severity,
       status,
+      category,
+      timestamp: timestamp || new Date().toISOString(),
     })
   } catch (err: any) {
-    console.error("❌ Unexpected error:", err)
+    console.error("❌ [Unexpected error]:", err)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }

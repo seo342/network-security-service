@@ -1,14 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { createClient } from "@supabase/supabase-js"
+import { SupabaseClient } from "@supabase/supabase-js"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TrendingUp, AlertTriangle, Ban, Activity } from "lucide-react"
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+import { supabase } from "@/lib/supabaseClient"
 
 interface Stats {
   totalRequests: number
@@ -18,9 +14,9 @@ interface Stats {
 }
 
 /**
- * ✅ 실시간 통계 카드 컴포넌트
- * - Supabase DB에서 직접 데이터 로드
- * - 트리거 기반 자동 집계 데이터 반영
+ * ✅ 전체 트래픽 로그 기반 통계 카드
+ * - 모든 기간의 로그를 기준으로 계산
+ * - 실시간 반영 유지
  */
 export default function StatsCards() {
   const [stats, setStats] = useState<Stats>({
@@ -30,61 +26,57 @@ export default function StatsCards() {
     uptime: "99.9%",
   })
 
-  // 🔹 데이터 로드 함수
+  // ✅ 통계 계산
   const fetchStats = async () => {
     try {
-      // 오늘 날짜 00시 기준
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const todayISOString = today.toISOString()
-
-      // 1️⃣ 오늘 총 요청 수
-      const { data: requestsData } = await supabase
+      // ✅ traffic_logs 전체 불러오기
+      const { data: logs, error } = await supabase
         .from("traffic_logs")
-        .select("requests")
-        .gte("time", todayISOString)
+        .select("id, time, source_ip, detection_result, category")
 
-      const totalRequests =
-        requestsData?.reduce((sum, row) => sum + (row.requests || 0), 0) || 0
+      if (error) throw error
+      console.log("📦 전체 로그 개수:", logs?.length || 0)
 
-      // 2️⃣ 최근 24시간 위협 탐지 수
-      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-      const { data: threatsData } = await supabase
-        .from("traffic_logs")
-        .select("threats")
-        .gte("time", since)
+      // 총 요청 수
+      const totalRequests = logs?.length || 0
 
+      // 위협 탐지 = BENIGN, NORMAL 제외
       const threatsDetected =
-        threatsData?.reduce((sum, row) => sum + (row.threats || 0), 0) || 0
+        logs?.filter((log) => {
+          const type = (log.detection_result || log.category || "").toLowerCase()
+          return type && !["benign", "normal"].includes(type)
+        }).length || 0
 
-      // 3️⃣ 차단된 IP 수
-      const { data: blockedData } = await supabase
-        .from("country_threats")
-        .select("blocked")
+      // 차단된 IP = 위협 발생한 source_ip 고유 개수
+      const blockedIPs = new Set(
+        logs
+          ?.filter((log) => {
+            const type = (log.detection_result || log.category || "").toLowerCase()
+            return type && !["benign", "normal"].includes(type)
+          })
+          .map((log) => log.source_ip)
+      ).size
 
-      const blockedIPs =
-        blockedData?.reduce((sum, row) => sum + (row.blocked || 0), 0) || 0
+      // 가동률 = 정상 비율
+      const benignCount =
+        logs?.filter((log) => {
+          const type = (log.detection_result || log.category || "").toLowerCase()
+          return ["benign", "normal"].includes(type)
+        }).length || 0
 
-      // 4️⃣ 가동률 (avg_response_time 기준 간이 계산)
-      const { data: metrics } = await supabase
-        .from("metrics_summary")
-        .select("avg_response_time")
-
-      const avgResponse =
-        metrics?.reduce(
-          (sum, row) => sum + Number(row.avg_response_time || 0),
-          0
-        ) /
-          (metrics?.length || 1) || 0
-
+      const uptimeRatio = totalRequests > 0 ? benignCount / totalRequests : 1
       const uptime =
-        avgResponse < 30
+        uptimeRatio >= 0.99
           ? "99.9%"
-          : avgResponse < 100
+          : uptimeRatio >= 0.95
           ? "99.5%"
-          : "97.0%"
+          : uptimeRatio >= 0.9
+          ? "98.0%"
+          : "95.0%"
 
-      setStats({
+      setStats({ totalRequests, threatsDetected, blockedIPs, uptime })
+
+      console.log("✅ 전체 데이터 기준 통계:", {
         totalRequests,
         threatsDetected,
         blockedIPs,
@@ -95,13 +87,12 @@ export default function StatsCards() {
     }
   }
 
-  // ✅ 마운트 시 및 실시간 구독
+  // ✅ 마운트 시 및 실시간 반영
   useEffect(() => {
     fetchStats()
 
-    // 실시간 트래픽 변화 감지 → 자동 업데이트
     const channel = supabase
-      .channel("stats-realtime")
+      .channel("realtime:traffic_logs")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "traffic_logs" },
@@ -127,7 +118,7 @@ export default function StatsCards() {
           <div className="text-2xl font-bold">
             {stats.totalRequests.toLocaleString()}
           </div>
-          <p className="text-xs text-muted-foreground">오늘 기준</p>
+          <p className="text-xs text-muted-foreground">전체 기준</p>
         </CardContent>
       </Card>
 
@@ -139,9 +130,9 @@ export default function StatsCards() {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-destructive">
-            {stats.threatsDetected}
+            {stats.threatsDetected.toLocaleString()}
           </div>
-          <p className="text-xs text-muted-foreground">지난 24시간</p>
+          <p className="text-xs text-muted-foreground">전체 로그 기준</p>
         </CardContent>
       </Card>
 
@@ -153,9 +144,9 @@ export default function StatsCards() {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-accent">
-            {stats.blockedIPs}
+            {stats.blockedIPs.toLocaleString()}
           </div>
-          <p className="text-xs text-muted-foreground">현재 활성</p>
+          <p className="text-xs text-muted-foreground">위협 IP 기준</p>
         </CardContent>
       </Card>
 
@@ -169,7 +160,7 @@ export default function StatsCards() {
           <div className="text-2xl font-bold text-green-500">
             {stats.uptime}
           </div>
-          <p className="text-xs text-muted-foreground">이번 달</p>
+          <p className="text-xs text-muted-foreground">전체 기준</p>
         </CardContent>
       </Card>
     </div>

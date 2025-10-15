@@ -15,6 +15,7 @@ interface ApiKey {
   id: number
   name: string
   key: string
+  desciption:string
   requests: number
 }
 
@@ -28,12 +29,13 @@ export default function ApiUsage() {
     async function fetchData() {
       const { data } = await supabase
         .from("api_keys")
-        .select("id, name, auth_key, api_usage(requests)")
+        .select("id, name, auth_key, api_usage(requests),description")
       setApiKeys(
         data?.map((i: any) => ({
           id: i.id,
           name: i.name,
           key: i.auth_key,
+          desciption:i.description,
           requests: i.api_usage?.reduce((s: number, u: any) => s + (u.requests || 0), 0) || 0,
         })) || []
       )
@@ -79,7 +81,7 @@ export default function ApiUsage() {
                 >
                   <div>
                     <div className="font-medium">{apiKey.name}</div>
-                    <div className="text-sm text-muted-foreground">{apiKey.key}</div>
+                    <div className="text-sm text-muted-foreground">{apiKey.desciption}</div>
                   </div>
                   <div className="text-right">
                     <div className="font-semibold">{apiKey.requests.toLocaleString()}</div>

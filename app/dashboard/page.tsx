@@ -13,6 +13,8 @@ import ThreatTable from "@/components/dashboard/ThreatsTable"
 import TrafficChart from "@/components/dashboard/TrafficChart"
 import TrafficLogs from "@/components/dashboard/TrafficLogs"
 import PacketLogFilters, { PacketFilterState } from "@/components/dashboard/PacketLogFilters"
+import ApiUsage from "@/components/api/ApiUsage"
+import AnalyticsPanel from "@/components/analytics/AnalyticsPanel"
 
 // Mock 데이터
 const generateMockData = () => {
@@ -73,22 +75,24 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-6">
         {/* 상단 통계 */}
-        <StatsCards stats={stats} />
+        <StatsCards/>
 
         {/* 탭 영역 */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="overview">개요</TabsTrigger>
             <TabsTrigger value="logs">트래픽 로그</TabsTrigger>
             <TabsTrigger value="threats">위협 분석</TabsTrigger>
             <TabsTrigger value="blocked">차단된 IP</TabsTrigger>
+            <TabsTrigger value="analytics">분석</TabsTrigger>
             <TabsTrigger value="settings">설정</TabsTrigger>
           </TabsList>
 
           {/* 개요 */}
           <TabsContent value="overview" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <TrafficChart data={chartData} />
+              <TrafficChart/>
+              <ApiUsage/>
               <RecentThreats />
               <SystemStatus />
             </div>
@@ -101,18 +105,23 @@ export default function DashboardPage() {
               <PacketLogFilters filters={filters} setFilters={setFilters} />
 
               {/* 우측: 로그 테이블 */}
-              <TrafficLogs filters={filters} />
+              <TrafficLogs />
             </div>
           </TabsContent>
 
           {/* 위협 분석 */}
           <TabsContent value="threats">
-            <ThreatTable threats={mockThreatData} />
+            <ThreatTable/>
           </TabsContent>
 
           {/* 차단된 IP */}
           <TabsContent value="blocked">
             <BlockedIPs blockedIPs={mockBlockedIPs} />
+          </TabsContent>
+
+
+          <TabsContent value="analytics">
+            <AnalyticsPanel />
           </TabsContent>
 
           {/* 설정 */}
