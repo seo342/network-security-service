@@ -36,22 +36,59 @@ interface AttackType {
   name: string
   value: number
   color: string
-  [key: string]: string | number
+  [key: string]: string | number // ✅ 인덱스 시그니처 추가
 }
 
+/**
+ * 📈 ThreatTrends
+ * - traffic_logs / attack_types 테이블에서 api_key_id 기준으로 데이터 불러옴
+ * - 시간별 위협 동향 + 공격 유형 분포 + 유형별 상세 라인 차트
+ */
 function ThreatTrendsInner() {
   const [trendData, setTrendData] = useState<ThreatTrend[]>([])
   const [attackTypeData, setAttackTypeData] = useState<AttackType[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // ✅ 로그인된 사용자의 API 키 ID 가져오기
+  const getUserApiKeyId = async (): Promise<number | null> => {
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+      if (userError || !user) return null
+
+      const { data, error } = await supabase
+        .from("api_keys")
+        .select("id")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single()
+
+      if (error) return null
+      return data?.id ?? null
+    } catch (err) {
+      console.error("❌ getUserApiKeyId 오류:", err)
+      return null
+    }
+  }
+
   // ✅ 데이터 불러오기
   const fetchData = async () => {
     try {
-      // 1️⃣ 트래픽 로그
+      const apiKeyId = await getUserApiKeyId()
+      if (!apiKeyId) {
+        setError("API 키를 찾을 수 없습니다.")
+        return
+      }
+
+      // 1️⃣ traffic_logs 테이블 (시간별 위협)
       const { data: traffic, error: trafficErr } = await supabase
         .from("traffic_logs")
         .select("time, threats, ddos, malware, suspicious")
+        .eq("api_key_id", apiKeyId)
         .order("time", { ascending: true })
         .limit(50)
 
@@ -73,15 +110,16 @@ function ThreatTrendsInner() {
         }
       })
 
-      // ✅ 데이터 비교 후 변경된 경우만 업데이트
       setTrendData((prev) =>
         JSON.stringify(prev) === JSON.stringify(newTrendData) ? prev : newTrendData
       )
 
-      // 2️⃣ 공격 유형 분포
+      // 2️⃣ attack_types 테이블 (공격 유형별 분포)
       const { data: attack, error: attackErr } = await supabase
         .from("attack_types")
         .select("type, count, color")
+        .eq("api_key_id", apiKeyId)
+        .order("count", { ascending: false })
 
       if (attackErr) throw attackErr
 
@@ -104,14 +142,14 @@ function ThreatTrendsInner() {
     }
   }
 
-  // ✅ 초기 fetch + 주기적 갱신
+  // ✅ 초기 로드 + 8초마다 자동 새로고침
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 8000) // 8초마다 업데이트
+    const interval = setInterval(fetchData, 8000)
     return () => clearInterval(interval)
   }, [])
 
-  // ✅ Supabase 실시간 구독 (새 로그 추가 시 자동 반영)
+  // ✅ 실시간 구독 (traffic_logs INSERT 이벤트 감시)
   useEffect(() => {
     const channel = supabase
       .channel("realtime:traffic_logs")
@@ -149,29 +187,26 @@ function ThreatTrendsInner() {
     }
   }, [])
 
-  // ✅ useMemo로 안정적인 데이터 참조 유지 (불필요한 렌더 방지)
   const chartData = useMemo(() => trendData, [trendData])
   const pieData = useMemo(() => attackTypeData, [attackTypeData])
 
-  if (loading) {
+  if (loading)
     return (
       <div className="flex justify-center items-center h-[400px] text-muted-foreground">
         ⏳ 위협 트렌드 로딩 중...
       </div>
     )
-  }
 
-  if (error) {
+  if (error)
     return (
       <div className="flex justify-center items-center h-[400px] text-red-500">
         ⚠️ {error}
       </div>
     )
-  }
 
   return (
     <div className="space-y-6 transition-all">
-      {/* 위협 탐지 동향 */}
+      {/* ▣ 위협 탐지 동향 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader>
@@ -199,7 +234,7 @@ function ThreatTrendsInner() {
                   fill="#ef4444"
                   fillOpacity={0.6}
                   name="총 위협"
-                  isAnimationActive={true}
+                  isAnimationActive
                 />
                 <Area
                   type="monotone"
@@ -209,14 +244,14 @@ function ThreatTrendsInner() {
                   fill="#3b82f6"
                   fillOpacity={0.6}
                   name="차단됨"
-                  isAnimationActive={true}
+                  isAnimationActive
                 />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        {/* 공격 유형별 분포 */}
+        {/* ▣ 공격 유형별 분포 */}
         <Card>
           <CardHeader>
             <CardTitle>공격 유형별 분포</CardTitle>
@@ -233,7 +268,7 @@ function ThreatTrendsInner() {
                   outerRadius={100}
                   paddingAngle={5}
                   dataKey="value"
-                  isAnimationActive={true}
+                  isAnimationActive
                 >
                   {pieData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
@@ -260,7 +295,7 @@ function ThreatTrendsInner() {
         </Card>
       </div>
 
-      {/* 공격 유형별 상세 동향 */}
+      {/* ▣ 공격 유형별 상세 동향 */}
       <Card>
         <CardHeader>
           <CardTitle>공격 유형별 상세 동향</CardTitle>
@@ -290,5 +325,4 @@ function ThreatTrendsInner() {
   )
 }
 
-// ✅ 메모이제이션으로 상위 rerender 시에도 차트 유지
 export default React.memo(ThreatTrendsInner)

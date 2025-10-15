@@ -1,5 +1,7 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { createClient } from "@supabase/supabase-js"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -8,20 +10,98 @@ import { Filter, Download } from "lucide-react"
 interface Incident {
   id: number
   time: string
-  type: string
-  source: string
+  detection_result: string
+  source_ip: string
   country: string
   severity: string
   status: string
-  details: string
+  details?: string
 }
 
-interface IncidentListProps {
-  incidents: Incident[]
-  getSeverityColor: (severity: string) => "destructive" | "secondary" | "default"
-}
+export default function IncidentList() {
+  const [incidents, setIncidents] = useState<Incident[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-export default function IncidentList({ incidents, getSeverityColor }: IncidentListProps) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
+  // ✅ 로그인한 유저의 API 키 ID 가져오기
+  const getUserApiKeyId = async (): Promise<number | null> => {
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+
+      if (userError || !user) return null
+
+      const { data, error } = await supabase
+        .from("api_keys")
+        .select("id")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single()
+
+      if (error) return null
+      return data?.id ?? null
+    } catch (err) {
+      console.error("getUserApiKeyId 오류:", err)
+      return null
+    }
+  }
+
+  // ✅ 심각도 색상 매핑 함수
+  const getSeverityColor = (severity: string): "destructive" | "secondary" | "default" => {
+    switch (severity) {
+      case "높음":
+      case "High":
+        return "destructive"
+      case "중간":
+      case "Medium":
+        return "secondary"
+      default:
+        return "default"
+    }
+  }
+
+  // ✅ incidents 테이블에서 최근 보안 사고 불러오기
+  useEffect(() => {
+    const loadIncidents = async () => {
+      try {
+        const apiKeyId = await getUserApiKeyId()
+        if (!apiKeyId) {
+          setError("API 키를 찾을 수 없습니다.")
+          return
+        }
+
+        const { data, error } = await supabase
+          .from("incidents")
+          .select("id, time, detection_result, source_ip, country, severity, status, details")
+          .eq("api_key_id", apiKeyId)
+          .order("time", { ascending: false })
+          .limit(10)
+
+        if (error) throw error
+        setIncidents(data || [])
+      } catch (err: any) {
+        console.error("🚨 incidents fetch 실패:", err.message)
+        setError("데이터를 불러오지 못했습니다.")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadIncidents()
+  }, [])
+
+  if (loading) return <div>📡 보안 사고 데이터를 불러오는 중...</div>
+  if (error) return <div>⚠️ {error}</div>
+  if (!incidents.length) return <div>🚫 최근 보안 사고가 없습니다.</div>
+
   return (
     <Card>
       <CardHeader>
@@ -42,6 +122,7 @@ export default function IncidentList({ incidents, getSeverityColor }: IncidentLi
           </div>
         </div>
       </CardHeader>
+
       <CardContent>
         <div className="space-y-4">
           {incidents.map((incident) => (
@@ -51,30 +132,38 @@ export default function IncidentList({ incidents, getSeverityColor }: IncidentLi
             >
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <Badge variant={getSeverityColor(incident.severity)}>{incident.severity}</Badge>
-                  <span className="font-medium">{incident.type}</span>
+                  <Badge variant={getSeverityColor(incident.severity)}>
+                    {incident.severity}
+                  </Badge>
+                  <span className="font-medium">{incident.detection_result}</span>
                   <Badge variant="outline">{incident.status}</Badge>
                 </div>
-                <span className="text-sm text-muted-foreground">{incident.time}</span>
+                <span className="text-sm text-muted-foreground">
+                  {new Date(incident.time).toLocaleString("ko-KR")}
+                </span>
               </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground">출발지 IP:</span>
-                  <div className="font-mono">{incident.source}</div>
+                  <div className="font-mono">{incident.source_ip}</div>
                 </div>
                 <div>
                   <span className="text-muted-foreground">국가:</span>
-                  <div>{incident.country}</div>
+                  <div>{incident.country || "알 수 없음"}</div>
                 </div>
                 <div>
                   <span className="text-muted-foreground">상태:</span>
                   <div>{incident.status}</div>
                 </div>
               </div>
-              <div className="mt-3 pt-3 border-t border-border/50">
-                <span className="text-muted-foreground text-sm">상세 정보:</span>
-                <p className="text-sm mt-1">{incident.details}</p>
-              </div>
+
+              {incident.details && (
+                <div className="mt-3 pt-3 border-t border-border/50">
+                  <span className="text-muted-foreground text-sm">상세 정보:</span>
+                  <p className="text-sm mt-1">{incident.details}</p>
+                </div>
+              )}
             </div>
           ))}
         </div>

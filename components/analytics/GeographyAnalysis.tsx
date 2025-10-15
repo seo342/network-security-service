@@ -1,6 +1,14 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useEffect, useState } from "react"
+import { createClient } from "@supabase/supabase-js"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { MapPin, Download } from "lucide-react"
@@ -15,18 +23,114 @@ import {
   Cell,
 } from "recharts"
 
+/** ✅ 데이터 타입 정의 */
 interface CountryData {
   country: string
   threats: number
+  blocked: number
   percentage: number
   color: string
 }
 
-interface GeographyAnalysisProps {
-  data: CountryData[]
-}
+/**
+ * 📊 GeographyAnalysis (통합형)
+ * - Supabase의 country_threats 테이블과 연결
+ * - 국가별 위협 데이터 시각화 (막대그래프 + 상세표)
+ */
+export default function GeographyAnalysis() {
+  const [data, setData] = useState<CountryData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-export default function GeographyAnalysis({ data }: GeographyAnalysisProps) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
+  // ✅ 현재 로그인 유저의 API 키 id 가져오기
+  const getUserApiKeyId = async (): Promise<number | null> => {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+    if (userError || !user) return null
+
+    const { data, error } = await supabase
+      .from("api_keys")
+      .select("id")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single()
+
+    if (error) return null
+    return data?.id ?? null
+  }
+
+  // ✅ 국가별 위협 데이터 불러오기
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const apiKeyId = await getUserApiKeyId()
+        if (!apiKeyId) {
+          setError("API 키를 찾을 수 없습니다.")
+          return
+        }
+
+        const { data, error } = await supabase
+          .from("country_threats")
+          .select("country, threats, blocked, percentage")
+          .eq("api_key_id", apiKeyId)
+          .order("threats", { ascending: false })
+          .limit(10)
+
+        if (error) throw error
+        if (!data) {
+          setData([])
+          return
+        }
+
+        // ✅ 색상 자동 지정
+        const palette = [
+          "#ef4444",
+          "#f97316",
+          "#eab308",
+          "#22c55e",
+          "#3b82f6",
+          "#6366f1",
+          "#a855f7",
+          "#ec4899",
+          "#14b8a6",
+          "#f59e0b",
+        ]
+
+        const mapped = data.map((item, i) => ({
+          country: item.country,
+          threats: item.threats,
+          blocked: item.blocked ?? 0,
+          percentage: Number(item.percentage),
+          color: palette[i % palette.length],
+        }))
+
+        setData(mapped)
+      } catch (err: any) {
+        console.error("🌍 지역 데이터 fetch 실패:", err.message)
+        setError("데이터를 불러오는 중 오류가 발생했습니다.")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+  }, [])
+
+  if (loading) return <div>📡 지역 데이터 불러오는 중...</div>
+  if (error) return <div>⚠️ {error}</div>
+  if (!data.length) return <div>🚫 국가별 데이터가 없습니다.</div>
+
+  // ✅ 총합 계산 (표 하단 통계용)
+  const totalThreats = data.reduce((sum, d) => sum + d.threats, 0)
+
   return (
     <div className="space-y-6">
       {/* 국가별 위협 분포 */}
@@ -47,7 +151,9 @@ export default function GeographyAnalysis({ data }: GeographyAnalysisProps) {
                     </div>
                     <div className="text-right">
                       <div className="font-semibold">{country.threats}</div>
-                      <div className="text-sm text-muted-foreground">{country.percentage}%</div>
+                      <div className="text-sm text-muted-foreground">
+                        {country.percentage}%
+                      </div>
                     </div>
                   </div>
                   <div className="w-full bg-muted rounded-full h-2">
@@ -74,21 +180,22 @@ export default function GeographyAnalysis({ data }: GeographyAnalysisProps) {
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={data}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))"/>
-                <XAxis dataKey="country" stroke="hsl(var(--border))"/>
-                <YAxis stroke="hsl(var(--border))"/>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="country" stroke="hsl(var(--border))" />
+                <YAxis stroke="hsl(var(--border))" />
                 <Tooltip
-                  cursor={{fill:"white"}}
+                  cursor={{ fill: "rgba(0,0,0,0.03)" }}
                   contentStyle={{
-                    backgroundColor:"white",
-                    border: "1px solid black",
-                    borderRadius:"8px",
-                  }}/>
-                  <Bar dataKey="threats">
-                    {data.map((entry,index)=>(
-                      <Cell key={`cell-${index}`} fill={entry.color}/>
-                    ))}
-                  </Bar>
+                    backgroundColor: "white",
+                    border: "1px solid #ccc",
+                    borderRadius: "8px",
+                  }}
+                />
+                <Bar dataKey="threats">
+                  {data.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -101,7 +208,7 @@ export default function GeographyAnalysis({ data }: GeographyAnalysisProps) {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>지역별 상세 분석</CardTitle>
-              <CardDescription>각 지역의 위협 패턴과 특성 분석</CardDescription>
+              <CardDescription>각 지역의 위협 패턴과 차단 통계</CardDescription>
             </div>
             <Button variant="outline" size="sm">
               <Download className="h-4 w-4 mr-2" />
@@ -116,27 +223,36 @@ export default function GeographyAnalysis({ data }: GeographyAnalysisProps) {
                 <tr className="border-b border-border">
                   <th className="text-left p-3">국가</th>
                   <th className="text-left p-3">총 위협</th>
-                  <th className="text-left p-3">DDoS</th>
-                  <th className="text-left p-3">무차별 대입</th>
-                  <th className="text-left p-3">기타</th>
+                  <th className="text-left p-3">차단된 공격</th>
                   <th className="text-left p-3">차단률</th>
+                  <th className="text-left p-3">비율</th>
                 </tr>
               </thead>
               <tbody>
-                {data.map((country, index) => (
-                  <tr key={index} className="border-b border-border/50">
-                    <td className="p-3 font-medium">{country.country}</td>
-                    <td className="p-3">{country.threats}</td>
-                    <td className="p-3">{Math.floor(country.threats * 0.4)}</td>
-                    <td className="p-3">{Math.floor(country.threats * 0.3)}</td>
-                    <td className="p-3">{Math.floor(country.threats * 0.3)}</td>
-                    <td className="p-3">
-                      <Badge variant="default" className="text-green-500">
-                        {Math.floor(Math.random() * 10 + 90)}%
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
+                {data.map((country, index) => {
+                  const blockRate =
+                    country.threats > 0
+                      ? ((country.blocked / country.threats) * 100).toFixed(1)
+                      : "0"
+                  return (
+                    <tr key={index} className="border-b border-border/50">
+                      <td className="p-3 font-medium">{country.country}</td>
+                      <td className="p-3">{country.threats}</td>
+                      <td className="p-3">{country.blocked}</td>
+                      <td className="p-3">
+                        <Badge variant="outline" className="text-green-600 border-green-300">
+                          {blockRate}%
+                        </Badge>
+                      </td>
+                      <td className="p-3">{country.percentage}%</td>
+                    </tr>
+                  )
+                })}
+                <tr className="font-semibold">
+                  <td className="p-3">총합</td>
+                  <td className="p-3">{totalThreats.toLocaleString()}</td>
+                  <td className="p-3" colSpan={3}></td>
+                </tr>
               </tbody>
             </table>
           </div>

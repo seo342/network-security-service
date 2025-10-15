@@ -1,7 +1,19 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { createClient } from "@supabase/supabase-js"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 interface TrafficLog {
   id: number
@@ -30,18 +42,26 @@ export default function TrafficLogs() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // ✅ 데이터 fetch
+  // ✅ 데이터 fetch 함수
   const fetchLogs = async () => {
     try {
-      const res = await fetch("/dashboard/traffic")
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error("로그인이 필요합니다.")
+
+      const res = await fetch("/dashboard/traffic", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      })
+
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
 
       const list: TrafficLog[] = (data.logs || []).map((log: any) => ({
         id: log.id ?? Math.random(),
         time: formatTime(log.time),
-        src_ip: log.flow_info?.src_ip ?? "-",
-        dst_ip: log.flow_info?.dst_ip ?? "-",
+        src_ip: log.flow_info?.src_ip ?? log.src_ip ?? "-",
+        dst_ip: log.flow_info?.dst_ip ?? log.dst_ip ?? "-",
         destination_port: log.Destination_Port ?? log.destination_port ?? 0,
         flow_duration: log.flow_duration ?? null,
         packet_count: log.packet_count ?? null,
@@ -54,13 +74,13 @@ export default function TrafficLogs() {
       setError(null)
     } catch (err: any) {
       console.error("🚨 traffic_logs fetch 실패:", err.message)
-      setError("서버에서 데이터를 불러올 수 없습니다.")
+      setError(err.message || "서버에서 데이터를 불러올 수 없습니다.")
     } finally {
       setLoading(false)
     }
   }
 
-  // ✅ 5초마다 갱신
+  // ✅ 5초마다 자동 갱신
   useEffect(() => {
     fetchLogs()
     const interval = setInterval(fetchLogs, 5000)
@@ -71,7 +91,7 @@ export default function TrafficLogs() {
     <Card className="flex-1">
       <CardHeader>
         <CardTitle>트래픽 세부 로그</CardTitle>
-        <CardDescription>패킷 단위 네트워크 탐지 상세 기록</CardDescription>
+        <CardDescription>해당 사용자 API 키별 네트워크 탐지 기록</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="rounded-md border overflow-x-auto">
@@ -110,8 +130,6 @@ export default function TrafficLogs() {
                     <td className="px-3 py-2 text-center font-mono">{log.src_ip}</td>
                     <td className="px-3 py-2 text-center font-mono">{log.dst_ip}</td>
                     <td className="px-3 py-2 text-center">{log.destination_port}</td>
-
-                    {/* ✅ null-safe number 출력 */}
                     <td className="px-3 py-2 text-center">
                       {log.flow_duration != null ? log.flow_duration.toFixed(2) : "-"}
                     </td>
@@ -121,8 +139,6 @@ export default function TrafficLogs() {
                     <td className="px-3 py-2 text-center">
                       {log.byte_count != null ? log.byte_count.toLocaleString() : "-"}
                     </td>
-
-                    {/* ✅ 공격 상태 색상 */}
                     <td
                       className={`px-3 py-2 text-center font-semibold ${
                         log.detection_result?.toUpperCase() === "BENIGN"
@@ -132,8 +148,6 @@ export default function TrafficLogs() {
                     >
                       {log.detection_result || "-"}
                     </td>
-
-                    {/* ✅ 확률 null-safe */}
                     <td className="px-3 py-2 text-center">
                       {log.confidence != null ? (log.confidence * 100).toFixed(2) + "%" : "-"}
                     </td>

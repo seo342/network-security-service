@@ -1,9 +1,15 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { createClient } from "@supabase/supabase-js"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 interface Threat {
   id: number
@@ -18,7 +24,7 @@ export default function ThreatTable() {
   const [threats, setThreats] = useState<Threat[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  // ✅ PostgreSQL timestamp → YYYY-MM-DD HH:mm:ss 변환
+  // ✅ timestamp 포맷
   const formatTime = (timestamp: string) => {
     if (!timestamp) return "-"
     const iso = timestamp.replace(" ", "T")
@@ -32,7 +38,15 @@ export default function ThreatTable() {
   // ✅ incidents 데이터 fetch
   const fetchThreats = async () => {
     try {
-      const res = await fetch("/dashboard/incidents")
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error("로그인이 필요합니다.")
+
+      const res = await fetch("/dashboard/incidents", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      })
+
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
       const data = json.incidents || json
@@ -40,7 +54,7 @@ export default function ThreatTable() {
       const mapped = data.map((item: any) => ({
         id: item.id,
         time: formatTime(item.time),
-        ip: item.source_ip,
+        ip: item.source_ip ?? "-",
         type: item.category || "Unknown",
         status: item.status || "-",
         severity: item.severity || "-",
@@ -54,6 +68,7 @@ export default function ThreatTable() {
     }
   }
 
+  // ✅ 5초마다 자동 갱신
   useEffect(() => {
     fetchThreats()
     const interval = setInterval(fetchThreats, 5000)
@@ -64,7 +79,7 @@ export default function ThreatTable() {
     <Card>
       <CardHeader>
         <CardTitle>위협 분석 대시보드</CardTitle>
-        <CardDescription>실시간 탐지된 위협 정보</CardDescription>
+        <CardDescription>실시간 탐지된 위협 정보 (내 API 키 기준)</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
@@ -96,7 +111,7 @@ export default function ThreatTable() {
                 threats.map((threat) => (
                   <tr
                     key={threat.id}
-                    className={`border-b border-border/50 hover:bg-muted/30 ${
+                    className={`border-b border-border/50 hover:bg-muted/30 transition-colors ${
                       threat.severity === "높음" ? "bg-red-50" : ""
                     }`}
                   >
