@@ -15,7 +15,7 @@ interface Incident {
   country: string
   severity: string
   status: string
-  details?: string
+  details?: any // ✅ string | object 모두 대응
 }
 
 export default function IncidentList() {
@@ -158,10 +158,33 @@ export default function IncidentList() {
                 </div>
               </div>
 
+              {/* ✅ details 안전 렌더링 */}
               {incident.details && (
                 <div className="mt-3 pt-3 border-t border-border/50">
                   <span className="text-muted-foreground text-sm">상세 정보:</span>
-                  <p className="text-sm mt-1">{incident.details}</p>
+
+                  {/* 객체일 경우 */}
+                  {typeof incident.details === "object" ? (
+                    <div className="text-sm mt-1 space-y-1">
+                      {"notes" in incident.details && (
+                        <p>📝 {incident.details.notes}</p>
+                      )}
+                      {"action" in incident.details && (
+                        <p>⚙️ {incident.details.action}</p>
+                      )}
+                      {/* 나머지 키 자동 출력 */}
+                      {Object.entries(incident.details)
+                        .filter(([k]) => !["notes", "action"].includes(k))
+                        .map(([k, v]) => (
+                          <p key={k}>
+                            {k}: {String(v)}
+                          </p>
+                        ))}
+                    </div>
+                  ) : (
+                    // 문자열일 경우
+                    <p className="text-sm mt-1">{incident.details}</p>
+                  )}
                 </div>
               )}
             </div>
