@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabaseServiceClient"
 import { createObjectCsvStringifier } from "csv-writer"
 import { jsPDF } from "jspdf"
+import fs from "fs"
+import path from "path"
 
 export async function POST(req: Request) {
   try {
@@ -15,66 +17,69 @@ export async function POST(req: Request) {
     else if (period === "90d") start.setDate(now.getDate() - 90)
     else if (period === "1y") start.setFullYear(now.getFullYear() - 1)
 
-    // 🔹 DB 조회 (api_usage + api_keys 조인)
     const { data, error } = await supabaseAdmin
       .from("api_usage")
-      .select("id, api_key_id, endpoint, requests, threats, created_at, api_keys(name, api_key)")
+      .select(`
+        id,
+        api_key_id,
+        endpoint,
+        requests,
+        threats,
+        created_at,
+        last_used,
+        api_keys:api_key_id (name, auth_key)
+      `)
       .gte("created_at", start.toISOString())
+      .order("created_at", { ascending: false })
 
     if (error) throw new Error(error.message)
-
-    // 🔹 형식별 파일 생성
-    if (format === "json") {
-      return new Response(JSON.stringify(data, null, 2), {
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Disposition": "attachment; filename=api_usage_report.json",
-        },
-      })
+    if (!data || data.length === 0) {
+      return NextResponse.json({ message: "No usage data found." }, { status: 200 })
     }
 
-    if (format === "csv") {
-      const csvWriter = createObjectCsvStringifier({
-        header: [
-          { id: "id", title: "ID" },
-          { id: "api_key_id", title: "API Key ID" },
-          { id: "api_key_name", title: "Key Name" },
-          { id: "endpoint", title: "Endpoint" },
-          { id: "requests", title: "Requests" },
-          { id: "threats", title: "Threats" },
-          { id: "created_at", title: "Created At" },
-        ],
-      })
-
-      const csvContent =
-        csvWriter.getHeaderString() +
-        csvWriter.stringifyRecords(
-          data.map((row: any) => ({
-            id: row.id,
-            api_key_id: row.api_key_id,
-            api_key_name: row.api_keys?.name || "",
-            endpoint: row.endpoint,
-            requests: row.requests,
-            threats: row.threats,
-            created_at: row.created_at,
-          }))
-        )
-
-      return new Response(csvContent, {
-        headers: {
-          "Content-Type": "text/csv",
-          "Content-Disposition": "attachment; filename=api_usage_report.csv",
-        },
-      })
-    }
-
+    // 🔹 PDF 형식 처리
     if (format === "pdf") {
       const doc = new jsPDF()
-      doc.text("API Usage Report", 14, 15)
-      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 25)
+      const fontPath = path.join(process.cwd(), "public", "fonts", "NotoSansKR-VariableFont_wght.ttf")
+      const fontData = fs.readFileSync(fontPath, "base64")
+
+      // ✅ 한글 폰트 등록
+      doc.addFileToVFS("NotoSansKR-VariableFont_wght.ttf", fontData)
+      doc.addFont("NotoSansKR-VariableFont_wght.ttf", "NotoSansKR", "normal")
+      doc.setFont("NotoSansKR")
+
+      let y = 20
+      const marginLeft = 14
+      doc.setFontSize(16)
+      doc.text("📊 API 사용 리포트", marginLeft, y)
+      y += 10
+      doc.setFontSize(10)
+      doc.text(`생성 시각: ${new Date().toLocaleString()}`, marginLeft, y)
+      y += 10
+
       data.forEach((row: any, idx: number) => {
-        doc.text(`${idx + 1}. ${row.api_keys?.name} (${row.endpoint}) - ${row.requests} req`, 14, 35 + idx * 8)
+        if (y > 270) {
+          doc.addPage()
+          y = 20
+        }
+
+        const name = row.api_keys?.name || "N/A"
+        const endpoint = row.endpoint || "-"
+        const requests = row.requests ?? 0
+        const threats = row.threats ?? 0
+        const createdAt = new Date(row.created_at).toLocaleString()
+        const lastUsed = new Date(row.last_used).toLocaleString()
+
+        doc.text(
+          `${idx + 1}. [${name}] ${endpoint} → ${requests} 요청 / ${threats} 위협`,
+          marginLeft,
+          y
+        )
+        y += 6
+        doc.text(`   생성일: ${createdAt} | 마지막 사용: ${lastUsed}`, marginLeft, y)
+        y += 8
       })
+
       const pdfBytes = doc.output("arraybuffer")
       return new Response(pdfBytes, {
         headers: {
@@ -86,6 +91,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Invalid format" }, { status: 400 })
   } catch (err: any) {
+    console.error("❌ Error generating report:", err)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }

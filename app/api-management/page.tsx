@@ -27,10 +27,9 @@ export default function ApiManagementPage() {
         </p>
 
         <Tabs defaultValue="keys" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="keys">API 키</TabsTrigger>
             <TabsTrigger value="docs">문서</TabsTrigger>
-            <TabsTrigger value="usage">사용량</TabsTrigger>
           </TabsList>
 
           <TabsContent value="keys">
@@ -39,10 +38,6 @@ export default function ApiManagementPage() {
 
           <TabsContent value="docs">
             <ApiDocs />
-          </TabsContent>
-
-          <TabsContent value="usage">
-            <ApiUsage/>
           </TabsContent>
         </Tabs>
       </div>
