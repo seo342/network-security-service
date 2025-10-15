@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabaseServiceClient"
-import { createObjectCsvStringifier } from "csv-writer"
 import { jsPDF } from "jspdf"
 import fs from "fs"
 import path from "path"
@@ -12,14 +11,28 @@ export async function POST(req: Request) {
     // 🔹 기간 계산
     const now = new Date()
     const start = new Date()
-    if (period === "7d") start.setDate(now.getDate() - 7)
-    else if (period === "30d") start.setDate(now.getDate() - 30)
-    else if (period === "90d") start.setDate(now.getDate() - 90)
-    else if (period === "1y") start.setFullYear(now.getFullYear() - 1)
+    switch (period) {
+      case "7d":
+        start.setDate(now.getDate() - 7)
+        break
+      case "30d":
+        start.setDate(now.getDate() - 30)
+        break
+      case "90d":
+        start.setDate(now.getDate() - 90)
+        break
+      case "1y":
+        start.setFullYear(now.getFullYear() - 1)
+        break
+      default:
+        start.setDate(now.getDate() - 30) // 기본 30일
+    }
 
+    // ✅ Supabase 조인 쿼리: api_usage + api_keys
     const { data, error } = await supabaseAdmin
       .from("api_usage")
-      .select(`
+      .select(
+        `
         id,
         api_key_id,
         endpoint,
@@ -27,8 +40,13 @@ export async function POST(req: Request) {
         threats,
         created_at,
         last_used,
-        api_keys:api_key_id (name, auth_key)
-      `)
+        api_keys:api_key_id (
+          name,
+          status,
+          auth_key
+        )
+      `
+      )
       .gte("created_at", start.toISOString())
       .order("created_at", { ascending: false })
 
@@ -37,15 +55,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "No usage data found." }, { status: 200 })
     }
 
-    // 🔹 PDF 형식 처리
+    // ✅ PDF 리포트 생성
     if (format === "pdf") {
       const doc = new jsPDF()
       const fontPath = path.join(process.cwd(), "public", "fonts", "NotoSansKR-VariableFont_wght.ttf")
+
+      if (!fs.existsSync(fontPath)) {
+        throw new Error("폰트 파일이 없습니다. public/fonts 폴더에 NotoSansKR.ttf를 추가하세요.")
+      }
+
       const fontData = fs.readFileSync(fontPath, "base64")
 
-      // ✅ 한글 폰트 등록
-      doc.addFileToVFS("NotoSansKR-VariableFont_wght.ttf", fontData)
-      doc.addFont("NotoSansKR-VariableFont_wght.ttf", "NotoSansKR", "normal")
+      // 🔹 한글 폰트 등록
+      doc.addFileToVFS("NotoSansKR.ttf", fontData)
+      doc.addFont("NotoSansKR.ttf", "NotoSansKR", "normal")
       doc.setFont("NotoSansKR")
 
       let y = 20
@@ -54,7 +77,7 @@ export async function POST(req: Request) {
       doc.text("📊 API 사용 리포트", marginLeft, y)
       y += 10
       doc.setFontSize(10)
-      doc.text(`생성 시각: ${new Date().toLocaleString()}`, marginLeft, y)
+      doc.text(`생성 시각: ${new Date().toLocaleString("ko-KR")}`, marginLeft, y)
       y += 10
 
       data.forEach((row: any, idx: number) => {
@@ -64,23 +87,27 @@ export async function POST(req: Request) {
         }
 
         const name = row.api_keys?.name || "N/A"
+        const status = row.api_keys?.status || "-"
         const endpoint = row.endpoint || "-"
         const requests = row.requests ?? 0
         const threats = row.threats ?? 0
-        const createdAt = new Date(row.created_at).toLocaleString()
-        const lastUsed = new Date(row.last_used).toLocaleString()
+        const createdAt = new Date(row.created_at).toLocaleString("ko-KR")
+        const lastUsed = new Date(row.last_used).toLocaleString("ko-KR")
 
-        doc.text(
-          `${idx + 1}. [${name}] ${endpoint} → ${requests} 요청 / ${threats} 위협`,
-          marginLeft,
-          y
-        )
+        doc.text(`${idx + 1}. [${name}] (${status})`, marginLeft, y)
         y += 6
-        doc.text(`   생성일: ${createdAt} | 마지막 사용: ${lastUsed}`, marginLeft, y)
+        doc.text(`   엔드포인트: ${endpoint}`, marginLeft, y)
+        y += 6
+        doc.text(`   요청 수: ${requests}회 | 탐지된 위협: ${threats}건`, marginLeft, y)
+        y += 6
+        doc.text(`   생성일: ${createdAt}`, marginLeft, y)
+        y += 6
+        doc.text(`   마지막 사용: ${lastUsed}`, marginLeft, y)
         y += 8
       })
 
       const pdfBytes = doc.output("arraybuffer")
+
       return new Response(pdfBytes, {
         headers: {
           "Content-Type": "application/pdf",

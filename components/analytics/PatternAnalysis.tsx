@@ -9,13 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import {
-  Clock,
-  TrendingUp,
-  Globe,
-  AlertTriangle,
-  Shield,
-} from "lucide-react"
+import { Clock, TrendingUp, Globe, AlertTriangle, Shield } from "lucide-react"
 import {
   ResponsiveContainer,
   AreaChart,
@@ -42,12 +36,44 @@ function PatternAnalysisInner() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // ✅ 데이터 가져오기
+  /** ✅ 로그인된 사용자의 API Key ID 가져오기 */
+  const getUserApiKeyId = async (): Promise<number | null> => {
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+      if (userError || !user) return null
+
+      const { data, error } = await supabase
+        .from("api_keys")
+        .select("id")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single()
+
+      if (error) return null
+      return data?.id ?? null
+    } catch (err) {
+      console.error("❌ getUserApiKeyId 오류:", err)
+      return null
+    }
+  }
+
+  /** ✅ 시간대별 패턴 데이터 가져오기 */
   const fetchPatternData = async () => {
     try {
+      const apiKeyId = await getUserApiKeyId()
+      if (!apiKeyId) {
+        setError("API 키를 찾을 수 없습니다.")
+        return
+      }
+
       const { data: result, error } = await supabase
         .from("hourly_patterns")
         .select("hour, threats, normal")
+        .eq("api_key_id", apiKeyId)
         .order("hour", { ascending: true })
 
       if (error) throw error
@@ -58,11 +84,9 @@ function PatternAnalysisInner() {
         normal: item.normal ?? 0,
       }))
 
-      // ✅ 이전 데이터와 비교 → 바뀐 경우에만 setData
       setData((prev) =>
         JSON.stringify(prev) === JSON.stringify(formatted) ? prev : formatted
       )
-
       setError(null)
     } catch (err: any) {
       console.error("❌ hourly_patterns fetch error:", err.message)
@@ -72,14 +96,14 @@ function PatternAnalysisInner() {
     }
   }
 
-  // ✅ 초기 로드 + 주기적 갱신
+  /** ✅ 초기 로드 + 8초마다 주기적 갱신 */
   useEffect(() => {
     fetchPatternData()
     const interval = setInterval(fetchPatternData, 8000)
     return () => clearInterval(interval)
   }, [])
 
-  // ✅ Supabase 실시간 감시
+  /** ✅ 실시간 구독 (INSERT 이벤트 감시) */
   useEffect(() => {
     const channel = supabase
       .channel("realtime:hourly_patterns")
@@ -120,7 +144,7 @@ function PatternAnalysisInner() {
     }
   }, [])
 
-  // ✅ useMemo로 안정적인 참조 유지
+  /** ✅ useMemo로 안정적인 참조 유지 */
   const chartData = useMemo(() => data, [data])
 
   if (loading) {
@@ -168,7 +192,7 @@ function PatternAnalysisInner() {
                 fill="#3b82f6"
                 fillOpacity={0.3}
                 name="정상 트래픽"
-                isAnimationActive={true}
+                isAnimationActive
               />
               <Area
                 type="monotone"
@@ -178,7 +202,7 @@ function PatternAnalysisInner() {
                 fill="#ef4444"
                 fillOpacity={0.6}
                 name="위협 트래픽"
-                isAnimationActive={true}
+                isAnimationActive
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -239,21 +263,27 @@ function PatternAnalysisInner() {
                   <AlertTriangle className="h-4 w-4 text-yellow-500" />
                   <span className="font-medium text-yellow-500">주의 필요</span>
                 </div>
-                <p className="text-sm">내일 오후 시간대에 DDoS 공격 증가가 예상됩니다.</p>
+                <p className="text-sm">
+                  내일 오후 시간대에 DDoS 공격 증가가 예상됩니다.
+                </p>
               </div>
               <div className="p-4 border border-blue-500/20 bg-blue-500/10 rounded-lg">
                 <div className="flex items-center gap-2 mb-2">
                   <Shield className="h-4 w-4 text-blue-500" />
                   <span className="font-medium text-blue-500">권장사항</span>
                 </div>
-                <p className="text-sm">중국 IP 대역에 대한 추가 모니터링을 권장합니다.</p>
+                <p className="text-sm">
+                  중국 IP 대역에 대한 추가 모니터링을 권장합니다.
+                </p>
               </div>
               <div className="p-4 border border-green-500/20 bg-green-500/10 rounded-lg">
                 <div className="flex items-center gap-2 mb-2">
                   <TrendingUp className="h-4 w-4 text-green-500" />
                   <span className="font-medium text-green-500">개선 사항</span>
                 </div>
-                <p className="text-sm">차단 성공률이 지속적으로 향상되고 있습니다.</p>
+                <p className="text-sm">
+                  차단 성공률이 지속적으로 향상되고 있습니다.
+                </p>
               </div>
             </div>
           </CardContent>

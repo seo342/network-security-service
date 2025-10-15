@@ -26,6 +26,7 @@ import {
 export default function AnalyticsPage() {
   const [selected, setSelected] = useState("metrics")
 
+  // ✅ 심각도 배지 색상 로직
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case "높음":
@@ -39,7 +40,7 @@ export default function AnalyticsPage() {
     }
   }
 
-  // 사이드바 버튼 정의
+  // ✅ 사이드 메뉴 항목
   const menuItems = [
     { key: "metrics", label: "핵심 지표", icon: <BarChart3 className="h-4 w-4" /> },
     { key: "trends", label: "위협 동향", icon: <Activity className="h-4 w-4" /> },
@@ -70,37 +71,13 @@ export default function AnalyticsPage() {
       <main className="flex-1 p-6 overflow-y-auto">
         <h1 className="text-2xl font-bold mb-6">AI 위협 탐지 분석 리포트</h1>
 
-        {selected === "metrics" && (
-          <div className="space-y-4">
-            <KeyMetrics metrics={mockMetrics} />
-          </div>
-        )}
-
-        {selected === "trends" && (
-          <div className="space-y-4">
-            <ThreatTrends trendData={threatTrendData} attackTypeData={attackTypeData} />
-          </div>
-        )}
-
-        {selected === "geography" && (
-          <div className="space-y-4">
-            <GeographyAnalysis data={countryData} />
-          </div>
-        )}
-
-        {selected === "patterns" && (
-          <div className="space-y-4">
-            <PatternAnalysis />
-          </div>
-        )}
-
+        {/* ✅ 각 섹션별 컴포넌트 출력 (DB 연동 버전) */}
+        {selected === "metrics" && <KeyMetrics />}
+        {selected === "trends" && <ThreatTrends />}
+        {selected === "geography" && <GeographyAnalysis />}
+        {selected === "patterns" && <PatternAnalysis />}
         {selected === "incidents" && (
-          <div className="space-y-4">
-            <IncidentList
-              incidents={recentIncidents}
-              getSeverityColor={getSeverityColor}
-            />
-          </div>
+          <IncidentList />
         )}
       </main>
     </div>

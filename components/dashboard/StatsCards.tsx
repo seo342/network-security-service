@@ -1,10 +1,14 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { SupabaseClient } from "@supabase/supabase-js"
+import { createClient } from "@supabase/supabase-js"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TrendingUp, AlertTriangle, Ban, Activity } from "lucide-react"
-import { supabase } from "@/lib/supabaseClient"
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 interface Stats {
   totalRequests: number
@@ -14,9 +18,9 @@ interface Stats {
 }
 
 /**
- * ✅ 전체 트래픽 로그 기반 통계 카드
- * - 모든 기간의 로그를 기준으로 계산
- * - 실시간 반영 유지
+ * ✅ 사용자별 트래픽 통계 카드
+ * - 자신의 API 키와 연관된 traffic_logs 기준
+ * - 실시간 반영 (INSERT 시 자동 갱신)
  */
 export default function StatsCards() {
   const [stats, setStats] = useState<Stats>({
@@ -29,40 +33,43 @@ export default function StatsCards() {
   // ✅ 통계 계산
   const fetchStats = async () => {
     try {
-      // ✅ traffic_logs 전체 불러오기
-      const { data: logs, error } = await supabase
-        .from("traffic_logs")
-        .select("id, time, source_ip, detection_result, category")
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error("로그인이 필요합니다.")
 
-      if (error) throw error
-      console.log("📦 전체 로그 개수:", logs?.length || 0)
+      // ✅ 유저 토큰 기반 API 요청
+      const res = await fetch("/dashboard/traffic", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const json = await res.json()
+      const logs = json.logs || []
 
-      // 총 요청 수
-      const totalRequests = logs?.length || 0
+      // ✅ 총 요청 수
+      const totalRequests = logs.length
 
-      // 위협 탐지 = BENIGN, NORMAL 제외
-      const threatsDetected =
-        logs?.filter((log) => {
-          const type = (log.detection_result || log.category || "").toLowerCase()
-          return type && !["benign", "normal"].includes(type)
-        }).length || 0
+      // ✅ 위협 탐지: BENIGN, NORMAL 제외
+      const threatsDetected = logs.filter((log: any) => {
+        const type = (log.detection_result || log.category || "").toLowerCase()
+        return type && !["benign", "normal"].includes(type)
+      }).length
 
-      // 차단된 IP = 위협 발생한 source_ip 고유 개수
+      // ✅ 차단된 IP: 위협 발생 source_ip 고유 개수
       const blockedIPs = new Set(
         logs
-          ?.filter((log) => {
+          .filter((log: any) => {
             const type = (log.detection_result || log.category || "").toLowerCase()
             return type && !["benign", "normal"].includes(type)
           })
-          .map((log) => log.source_ip)
+          .map((log: any) => log.flow_info?.src_ip ?? log.source_ip)
       ).size
 
-      // 가동률 = 정상 비율
-      const benignCount =
-        logs?.filter((log) => {
-          const type = (log.detection_result || log.category || "").toLowerCase()
-          return ["benign", "normal"].includes(type)
-        }).length || 0
+      // ✅ 가동률 (정상 비율)
+      const benignCount = logs.filter((log: any) => {
+        const type = (log.detection_result || log.category || "").toLowerCase()
+        return ["benign", "normal"].includes(type)
+      }).length
 
       const uptimeRatio = totalRequests > 0 ? benignCount / totalRequests : 1
       const uptime =
@@ -75,19 +82,12 @@ export default function StatsCards() {
           : "95.0%"
 
       setStats({ totalRequests, threatsDetected, blockedIPs, uptime })
-
-      console.log("✅ 전체 데이터 기준 통계:", {
-        totalRequests,
-        threatsDetected,
-        blockedIPs,
-        uptime,
-      })
     } catch (err) {
       console.error("❌ 통계 로드 실패:", err)
     }
   }
 
-  // ✅ 마운트 시 및 실시간 반영
+  // ✅ 마운트 및 실시간 반영
   useEffect(() => {
     fetchStats()
 
@@ -118,7 +118,7 @@ export default function StatsCards() {
           <div className="text-2xl font-bold">
             {stats.totalRequests.toLocaleString()}
           </div>
-          <p className="text-xs text-muted-foreground">전체 기준</p>
+          <p className="text-xs text-muted-foreground">내 API 키 기준</p>
         </CardContent>
       </Card>
 
@@ -132,7 +132,7 @@ export default function StatsCards() {
           <div className="text-2xl font-bold text-destructive">
             {stats.threatsDetected.toLocaleString()}
           </div>
-          <p className="text-xs text-muted-foreground">전체 로그 기준</p>
+          <p className="text-xs text-muted-foreground">내 로그 기준</p>
         </CardContent>
       </Card>
 
@@ -157,10 +157,8 @@ export default function StatsCards() {
           <Activity className="h-4 w-4 text-green-500" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold text-green-500">
-            {stats.uptime}
-          </div>
-          <p className="text-xs text-muted-foreground">전체 기준</p>
+          <div className="text-2xl font-bold text-green-500">{stats.uptime}</div>
+          <p className="text-xs text-muted-foreground">내 API 기준</p>
         </CardContent>
       </Card>
     </div>
