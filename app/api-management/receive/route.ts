@@ -49,6 +49,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "API key inactive" }, { status: 403 })
     }
 
+    //사용 기록 갱신
+    await supabaseAdmin
+    .from("api_keys")
+    .update({last_used:new Date().toISOString()})
+    .eq("id",apiKeyData.id)
+
     // ✅ 이메일 추출 (profiles 관계 필드 안전 처리)
     let userEmail: string | undefined
     const profileField = (apiKeyData as any).profiles
