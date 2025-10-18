@@ -120,11 +120,15 @@ export async function POST(req: Request) {
     // 5️⃣ 심각한 위협일 경우 이메일 발송
     // ------------------------------------------------------------
     const shouldAlert =
+    detection_result !== "BENIGN" &&
+    (
       severity === "high" ||
       (confidence && confidence >= 0.9) ||
       /(dos|ddos|malware|ransom|trojan|exploit|brute|attack)/i.test(
         detection_result
       )
+    )
+
 
     if (shouldAlert) {
       try {
