@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabaseServiceClient"
+import { createObjectCsvStringifier } from "csv-writer"
 import { jsPDF } from "jspdf"
 import fs from "fs"
 import path from "path"
@@ -25,10 +26,10 @@ export async function POST(req: Request) {
         start.setFullYear(now.getFullYear() - 1)
         break
       default:
-        start.setDate(now.getDate() - 30) // 기본 30일
+        start.setDate(now.getDate() - 30)
     }
 
-    // ✅ Supabase 조인 쿼리: api_usage + api_keys
+    // ✅ Supabase 조인 쿼리
     const { data, error } = await supabaseAdmin
       .from("api_usage")
       .select(
@@ -55,7 +56,58 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "No usage data found." }, { status: 200 })
     }
 
-    // ✅ PDF 리포트 생성
+    // ✅ JSON 형식
+    if (format === "json") {
+      return new NextResponse(JSON.stringify(data, null, 2), {
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Disposition": `attachment; filename="api_usage_report.json"`,
+        },
+      })
+    }
+
+    // ✅ CSV 형식
+    if (format === "csv") {
+      const csvStringifier = createObjectCsvStringifier({
+        header: [
+          { id: "id", title: "ID" },
+          { id: "api_key_id", title: "API Key ID" },
+          { id: "endpoint", title: "Endpoint" },
+          { id: "requests", title: "Requests" },
+          { id: "threats", title: "Threats" },
+          { id: "created_at", title: "Created At" },
+          { id: "last_used", title: "Last Used" },
+          { id: "api_keys.name", title: "API Key Name" },
+          { id: "api_keys.status", title: "Status" },
+        ],
+      })
+
+      // Supabase nested key (`api_keys.name`) 풀어서 변환
+      const flatData = data.map((row: any) => ({
+        id: row.id,
+        api_key_id: row.api_key_id,
+        endpoint: row.endpoint,
+        requests: row.requests,
+        threats: row.threats,
+        created_at: row.created_at,
+        last_used: row.last_used,
+        "api_keys.name": row.api_keys?.name,
+        "api_keys.status": row.api_keys?.status,
+      }))
+
+      const csvContent =
+        csvStringifier.getHeaderString() +
+        csvStringifier.stringifyRecords(flatData || [])
+
+      return new NextResponse(csvContent, {
+        headers: {
+          "Content-Type": "text/csv",
+          "Content-Disposition": `attachment; filename="api_usage_report.csv"`,
+        },
+      })
+    }
+
+    // ✅ PDF 형식
     if (format === "pdf") {
       const doc = new jsPDF()
       const fontPath = path.join(process.cwd(), "public", "fonts", "NotoSansKR-VariableFont_wght.ttf")
@@ -65,8 +117,6 @@ export async function POST(req: Request) {
       }
 
       const fontData = fs.readFileSync(fontPath, "base64")
-
-      // 🔹 한글 폰트 등록
       doc.addFileToVFS("NotoSansKR.ttf", fontData)
       doc.addFont("NotoSansKR.ttf", "NotoSansKR", "normal")
       doc.setFont("NotoSansKR")
@@ -92,7 +142,9 @@ export async function POST(req: Request) {
         const requests = row.requests ?? 0
         const threats = row.threats ?? 0
         const createdAt = new Date(row.created_at).toLocaleString("ko-KR")
-        const lastUsed = new Date(row.last_used).toLocaleString("ko-KR")
+        const lastUsed = row.last_used
+          ? new Date(row.last_used).toLocaleString("ko-KR")
+          : "-"
 
         doc.text(`${idx + 1}. [${name}] (${status})`, marginLeft, y)
         y += 6
@@ -116,6 +168,7 @@ export async function POST(req: Request) {
       })
     }
 
+    // ❌ 형식이 지정되지 않은 경우
     return NextResponse.json({ error: "Invalid format" }, { status: 400 })
   } catch (err: any) {
     console.error("❌ Error generating report:", err)
