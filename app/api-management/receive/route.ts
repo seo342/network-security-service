@@ -3,9 +3,9 @@ import { supabaseAdmin } from "@/lib/supabaseServiceClient"
 import { sendImmediateAlertEmail } from "@/lib/email"
 
 /**
- * ✅ 위협 탐지 결과 수신 API
+ * ✅ 위협 탐지 결과 수신 API (개선 버전)
  * - incidents 테이블에 로그 저장
- * - 심각한 위협이면 사용자에게 이메일 즉시 발송
+ * - 사용자의 알림 설정(notification_settings)에 따라 이메일 발송
  */
 export async function POST(req: Request) {
   try {
@@ -33,11 +33,11 @@ export async function POST(req: Request) {
     }
 
     // ------------------------------------------------------------
-    // 2️⃣ API 키 검증 및 사용자 이메일 조회 (profiles 기준)
+    // 2️⃣ API 키 검증 및 사용자 정보 조회
     // ------------------------------------------------------------
     const { data: apiKeyData, error: keyError } = await supabaseAdmin
       .from("api_keys")
-      .select("id, user_id, status, profiles ( email )") // ✅ profiles로 변경
+      .select("id, user_id, status, profiles ( email )")
       .eq("auth_key", auth_key)
       .maybeSingle()
 
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "API key inactive" }, { status: 403 })
     }
 
-    // ✅ profiles가 객체 또는 배열일 수 있으므로 안전하게 처리
+    // ✅ 이메일 추출 (profiles 관계 필드 안전 처리)
     let userEmail: string | undefined
     const profileField = (apiKeyData as any).profiles
     if (Array.isArray(profileField)) {
@@ -66,7 +66,22 @@ export async function POST(req: Request) {
     }
 
     // ------------------------------------------------------------
-    // 3️⃣ 위협 심각도 자동 분류
+    // 3️⃣ 이메일 알림 설정(notification_settings) 조회
+    // ------------------------------------------------------------
+    const { data: notifySetting, error: notifyError } = await supabaseAdmin
+      .from("notification_settings")
+      .select("email_alert")
+      .eq("user_id", apiKeyData.user_id)
+      .maybeSingle()
+
+    if (notifyError) {
+      console.error("⚠️ [알림 설정 조회 오류]:", notifyError.message)
+    }
+
+    const emailAlertEnabled = notifySetting?.email_alert ?? true // 기본값 true
+
+    // ------------------------------------------------------------
+    // 4️⃣ 위협 심각도 자동 분류
     // ------------------------------------------------------------
     const severity =
       detection_result === "BENIGN"
@@ -80,7 +95,7 @@ export async function POST(req: Request) {
     const status = detection_result === "BENIGN" ? "resolved" : "active"
 
     // ------------------------------------------------------------
-    // 4️⃣ incidents 테이블에 삽입
+    // 5️⃣ incidents 테이블에 삽입
     // ------------------------------------------------------------
     const { data: inserted, error: insertError } = await supabaseAdmin
       .from("incidents")
@@ -103,6 +118,7 @@ export async function POST(req: Request) {
           flow_info,
           top_candidates,
           auth_key,
+          api_key_id: apiKeyData.id,
         },
       ])
       .select()
@@ -110,37 +126,35 @@ export async function POST(req: Request) {
 
     if (insertError) {
       console.error("❌ [DB insert error]:", insertError.message)
-      return NextResponse.json(
-        { error: "Database insert failed" },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: "Database insert failed" }, { status: 500 })
     }
 
     // ------------------------------------------------------------
-    // 5️⃣ 심각한 위협일 경우 이메일 발송
+    // 6️⃣ 이메일 발송 조건 검사
     // ------------------------------------------------------------
-    const shouldAlert =
-    detection_result !== "BENIGN" &&
-    (
-      severity === "high" ||
-      (confidence && confidence >= 0.9) ||
-      /(dos|ddos|malware|ransom|trojan|exploit|brute|attack)/i.test(
-        detection_result
+    const isHighThreat =
+      detection_result !== "BENIGN" &&
+      (
+        severity === "high" ||
+        (confidence && confidence >= 0.9) ||
+        /(dos|ddos|malware|ransom|trojan|exploit|brute|attack)/i.test(
+          detection_result
+        )
       )
-    )
 
-
-    if (shouldAlert) {
+    if (emailAlertEnabled && isHighThreat) {
       try {
         await sendImmediateAlertEmail(inserted, userEmail)
-        console.log(`📨 고위험 위협 이메일 발송 완료 → ${userEmail}`)
+        console.log(`📨 이메일 발송 완료 (${userEmail})`)
       } catch (mailErr: any) {
         console.error("❌ [Email send failed]:", mailErr.message)
       }
+    } else if (!emailAlertEnabled) {
+      console.log(`📪 이메일 알림 비활성화 → ${userEmail}`)
     }
 
     // ------------------------------------------------------------
-    // 6️⃣ 최종 응답 반환
+    // 7️⃣ 응답 반환
     // ------------------------------------------------------------
     return NextResponse.json({
       message: "✅ Incident logged successfully.",
@@ -148,6 +162,7 @@ export async function POST(req: Request) {
       severity,
       status,
       category,
+      emailAlertEnabled,
       timestamp: timestamp || new Date().toISOString(),
     })
   } catch (err: any) {
