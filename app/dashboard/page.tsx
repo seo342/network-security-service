@@ -31,12 +31,6 @@ const generateMockData = () => {
   return data
 }
 
-const mockThreatData = [
-  { id: 1, ip: "192.168.56.11", country: "대한민국", status: "정상", time: "14:22:10", type: "normal" },
-  { id: 2, ip: "8.8.8.8", country: "미국", status: "경고", time: "15:11:11", type: "warning" },
-  { id: 3, ip: "14.44.444.44", country: "북한", status: "위험", time: "17:11:13", type: "danger" },
-]
-
 const mockBlockedIPs = [
   { ip: "14.44.444.44", country: "북한", reason: "위험 국가", blockedAt: "17:11:13" },
   { ip: "123.45.67.89", country: "중국", reason: "DDoS 공격", blockedAt: "16:45:22" },
