@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@supabase/supabase-js"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 
 const supabase = createClient(
@@ -11,149 +11,190 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-interface Threat {
-  id: number
-  time: string
-  ip: string
-  type: string
-  status: string
-  severity: string
+declare global {
+  interface Window {
+    initGoogleMap: any
+  }
 }
 
-/**
- * ✅ 특정 API 키 기반 위협 로그 테이블
- * - incidents 테이블에서 api_key_id로 필터링
- * - 5초마다 자동 갱신
- */
-export default function ThreatTable({ apiKeyId }: { apiKeyId: string }) {
-  const [threats, setThreats] = useState<Threat[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+export default function ThreatIpAnalysis({ apiKeyId }: { apiKeyId: string }) {
+  const [queryIp, setQueryIp] = useState("")
+  const [ipInfo, setIpInfo] = useState<any>(null)
+  const [threatList, setThreatList] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [mapLoaded, setMapLoaded] = useState(false)
 
-  // ✅ timestamp 포맷
-  const formatTime = (timestamp: string) => {
-    if (!timestamp) return "-"
-    const date = new Date(timestamp)
-    if (isNaN(date.getTime())) return "-"
-    const pad = (n: number) => n.toString().padStart(2, "0")
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} `
-      + `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-  }
+  // ✅ Google Maps 스크립트 로드
+  useEffect(() => {
+    if (window.google && window.google.maps) {
+      setMapLoaded(true)
+      return
+    }
 
-  // ✅ Supabase에서 incidents 불러오기
-  const fetchThreats = async () => {
+    const script = document.createElement("script")
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&callback=initGoogleMap`
+    script.async = true
+
+    window.initGoogleMap = () => {
+      console.log("✅ Google Maps SDK loaded")
+      setMapLoaded(true)
+    }
+
+    document.head.appendChild(script)
+
+    return () => {
+      document.head.removeChild(script)
+    }
+  }, [])
+
+  // ✅ IP 정보 조회 (ipwho.is를 HTTPS로 사용)
+  const fetchIpInfo = async () => {
+    if (!queryIp) return
+    setLoading(true)
     try {
-      if (!apiKeyId) return
-
-      const { data, error } = await supabase
-        .from("incidents")
-        .select("id, time, source_ip, category, severity, status")
-        .eq("api_key_id", apiKeyId)
-        .order("time", { ascending: false })
-        .limit(50)
-
-      if (error) throw error
-
-      const mapped = (data || []).map((item) => ({
-        id: item.id,
-        time: formatTime(item.time),
-        ip: item.source_ip ?? "-",
-        type: item.category || "Unknown",
-        status: item.status || "-",
-        severity: item.severity || "-",
-      }))
-
-      setThreats(mapped)
-      setError(null)
-    } catch (err: any) {
-      console.error("🚨 incidents fetch 실패:", err.message)
-      setError("서버에서 데이터를 불러올 수 없습니다.")
+      const res = await fetch(`https://ipwho.is/${queryIp}`)
+      const data = await res.json()
+      if (data.success === false) {
+        alert("IP 정보를 가져올 수 없습니다.")
+        return
+      }
+      setIpInfo({
+        country: data.country,
+        city: data.city,
+        isp: data.connection?.isp,
+        org: data.connection?.org,
+        lat: data.latitude,
+        lon: data.longitude,
+        query: data.ip,
+        regionName:data.region,
+      })
+    } catch (err) {
+      console.error(err)
     } finally {
       setLoading(false)
     }
   }
 
-  // ✅ 5초마다 자동 갱신
+  // ✅ Supabase에서 위협 IP 목록 불러오기
+  const loadThreatList = async () => {
+    if (!apiKeyId) return
+    const { data, error } = await supabase
+      .from("threat_ips")
+      .select("*")
+      .eq("api_key_id", apiKeyId)
+      .order("detected_at", { ascending: false })
+      .limit(30)
+    if (!error && data) setThreatList(data)
+  }
+
   useEffect(() => {
-    fetchThreats()
-    const interval = setInterval(fetchThreats, 5000)
-    return () => clearInterval(interval)
+    loadThreatList()
   }, [apiKeyId])
 
+  // ✅ Google Map 렌더링
+  useEffect(() => {
+    if (!mapLoaded || !ipInfo?.lat || !ipInfo?.lon) return
+
+    const mapContainer = document.getElementById("google-map") as HTMLElement
+    if (!mapContainer) return
+
+    const position = { lat: ipInfo.lat, lng: ipInfo.lon }
+    const map = new google.maps.Map(mapContainer, {
+      center: position,
+      zoom: 6,
+    })
+
+    const marker = new google.maps.Marker({
+      position,
+      map,
+      title: ipInfo.query,
+    })
+
+    const infoWindow = new google.maps.InfoWindow({
+      content: `<div style="font-size:13px">
+        <b>${ipInfo.query}</b><br>${ipInfo.city || ""}, ${ipInfo.country}<br>${ipInfo.isp || ""}
+      </div>`,
+    })
+
+    marker.addListener("click", () => infoWindow.open(map, marker))
+  }, [mapLoaded, ipInfo])
+
   return (
-    <Card>
+    <Card className="p-4 space-y-4">
       <CardHeader>
-        <CardTitle>위협 분석 대시보드</CardTitle>
-        <CardDescription>
-          {apiKeyId
-            ? `API 키 ${apiKeyId} 기준 실시간 탐지된 위협 정보`
-            : "API 키가 선택되지 않았습니다."}
-        </CardDescription>
+        <CardTitle>위협 IP 분석 (Google Maps)</CardTitle>
       </CardHeader>
       <CardContent>
+        {/* 🔹 IP 입력 */}
+        <div className="flex gap-2 mb-4">
+          <Input
+            placeholder="조회할 IP 주소 입력"
+            value={queryIp}
+            onChange={(e) => setQueryIp(e.target.value)}
+          />
+          <Button onClick={fetchIpInfo} disabled={loading}>
+            {loading ? "조회 중..." : "조회"}
+          </Button>
+        </div>
+
+        {/* 🔹 IP 정보 + 지도 */}
+        {/* 🔹 IP 정보 + 지도 */}
+          {ipInfo && (
+            <div className="grid md:grid-cols-2 gap-6 mb-6">
+              {/* 왼쪽: IP 상세 정보 */}
+              <div className="text-sm space-y-4">
+                {/* 위치 정보 */}
+                <div className="border p-3 rounded-lg bg-muted/30">
+                  <h4 className="font-semibold mb-2">🌍 위치 정보</h4>
+                  <p><b>국가:</b> {ipInfo.country || "Unknown"}</p>
+                  <p><b>도시:</b> {ipInfo.city || "Unknown"}</p>
+                  <p><b>지역:</b> {ipInfo.regionName || "Unknown"}</p>
+                  <p><b>위도:</b> {ipInfo.lat}</p>
+                  <p><b>경도:</b> {ipInfo.lon}</p>
+                </div>
+
+                {/* 네트워크 정보 */}
+                <div className="border p-3 rounded-lg bg-muted/30">
+                  <h4 className="font-semibold mb-2">🏢 네트워크 정보</h4>
+                  <p><b>ISP:</b> {ipInfo.isp || "Unknown"}</p>
+                  <p><b>조직:</b> {ipInfo.org || "Unknown"}</p>
+                  <p><b>IP 주소:</b> {ipInfo.query}</p>
+                </div>
+              </div>
+
+              {/* 오른쪽: 지도 */}
+              <div id="google-map" className="w-full h-[250px] border rounded-lg" />
+            </div>
+          )}
+
+
+        {/* 🔹 DB 위협 목록 */}
+        <h3 className="font-semibold mb-2">API 키 {apiKeyId} 기반 수집된 위협 IP 목록</h3>
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left p-3 text-xs font-medium">시간</th>
-                <th className="text-left p-3 text-xs font-medium">IP 주소</th>
-                <th className="text-left p-3 text-xs font-medium">공격 유형</th>
-                <th className="text-left p-3 text-xs font-medium">심각도</th>
-                <th className="text-left p-3 text-xs font-medium">상태</th>
-                <th className="text-left p-3 text-xs font-medium">작업</th>
+          <table className="w-full text-sm border">
+            <thead className="bg-muted">
+              <tr>
+                <th className="p-2 text-left">IP 주소</th>
+                <th className="p-2 text-left">국가</th>
+                <th className="p-2 text-left">위협도</th>
+                <th className="p-2 text-left">탐지 시간</th>
               </tr>
             </thead>
             <tbody>
-              {error ? (
+              {threatList.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center text-red-500 py-6">
-                    ⚠️ {error}
-                  </td>
-                </tr>
-              ) : loading ? (
-                <tr>
-                  <td colSpan={6} className="text-center text-muted-foreground py-6">
-                    ⏳ 로딩 중...
-                  </td>
-                </tr>
-              ) : threats.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-center text-muted-foreground py-6">
+                  <td colSpan={4} className="text-center p-4 text-muted-foreground">
                     데이터 없음
                   </td>
                 </tr>
               ) : (
-                threats.map((threat) => (
-                  <tr
-                    key={threat.id}
-                    className={`border-b border-border/50 hover:bg-muted/30 transition-colors ${
-                      threat.severity === "높음" ? "bg-red-50" : ""
-                    }`}
-                  >
-                    <td className="p-3 text-sm">{threat.time}</td>
-                    <td className="p-3 font-mono text-sm">{threat.ip}</td>
-                    <td className="p-3 text-sm">{threat.type}</td>
-                    <td className="p-3 text-sm">
-                      <Badge
-                        variant={
-                          threat.severity === "높음"
-                            ? "destructive"
-                            : threat.severity === "중간"
-                            ? "secondary"
-                            : "default"
-                        }
-                        className="text-xs"
-                      >
-                        {threat.severity}
-                      </Badge>
-                    </td>
-                    <td className="p-3 text-sm">{threat.status}</td>
-                    <td className="p-3">
-                      {threat.severity === "높음" && (
-                        <Button size="sm" variant="destructive">
-                          차단
-                        </Button>
-                      )}
+                threatList.map((item) => (
+                  <tr key={item.id} className="border-t hover:bg-muted/30">
+                    <td className="p-2">{item.ip_address}</td>
+                    <td className="p-2">{item.country || "Unknown"}</td>
+                    <td className="p-2">{item.threat_level || "알 수 없음"}</td>
+                    <td className="p-2">
+                      {new Date(item.detected_at).toLocaleString()}
                     </td>
                   </tr>
                 ))

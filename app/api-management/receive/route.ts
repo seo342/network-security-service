@@ -3,10 +3,11 @@ import { supabaseAdmin } from "@/lib/supabaseServiceClient"
 import { sendImmediateAlertEmail } from "@/lib/email"
 
 /**
- * ✅ 위협 탐지 결과 수신 API (정지 기능 포함)
+ * ✅ 위협 탐지 결과 수신 API (최신 통합 버전)
  * - incidents 테이블에 로그 저장
- * - inactive API 키는 차단
- * - 이메일 알림 설정(notification_settings)에 따라 알림 발송
+ * - threat_ips 테이블에 IP별 위협 정보 저장 (api_key_id 기준)
+ * - inactive API 키 차단
+ * - 이메일 알림 설정(notification_settings)에 따라 발송
  */
 export async function POST(req: Request) {
   try {
@@ -29,9 +30,8 @@ export async function POST(req: Request) {
       country,
     } = body
 
-    if (!auth_key) {
+    if (!auth_key)
       return NextResponse.json({ error: "Missing auth_key" }, { status: 400 })
-    }
 
     // ------------------------------------------------------------
     // 2️⃣ API 키 검증 및 사용자 정보 조회
@@ -42,11 +42,9 @@ export async function POST(req: Request) {
       .eq("auth_key", auth_key)
       .maybeSingle()
 
-    if (keyError || !apiKeyData) {
+    if (keyError || !apiKeyData)
       return NextResponse.json({ error: "Invalid auth_key" }, { status: 401 })
-    }
 
-    // 🧩 추가: 비활성 키 차단 로직
     if (apiKeyData.status !== "active") {
       console.warn(`🚫 비활성화된 API 키 접근 시도: ${auth_key}`)
       return NextResponse.json(
@@ -56,7 +54,7 @@ export async function POST(req: Request) {
     }
 
     // ------------------------------------------------------------
-    // 3️⃣ API 사용 기록 갱신
+    // 3️⃣ API 사용 기록 업데이트
     // ------------------------------------------------------------
     await supabaseAdmin
       .from("api_keys")
@@ -64,35 +62,21 @@ export async function POST(req: Request) {
       .eq("id", apiKeyData.id)
 
     // ✅ 이메일 추출 (profiles 관계 필드 안전 처리)
-    let userEmail: string | undefined
     const profileField = (apiKeyData as any).profiles
-    if (Array.isArray(profileField)) {
-      userEmail = profileField[0]?.email
-    } else if (profileField && typeof profileField === "object") {
-      userEmail = profileField.email
-    }
-
-    if (!userEmail) {
-      return NextResponse.json(
-        { error: "User email not found for this API key" },
-        { status: 400 }
-      )
-    }
+    const userEmail = Array.isArray(profileField)
+      ? profileField[0]?.email
+      : profileField?.email
 
     // ------------------------------------------------------------
-    // 4️⃣ 이메일 알림 설정(notification_settings) 조회
+    // 4️⃣ 알림 설정(notification_settings)
     // ------------------------------------------------------------
-    const { data: notifySetting, error: notifyError } = await supabaseAdmin
+    const { data: notifySetting } = await supabaseAdmin
       .from("notification_settings")
       .select("email_alert")
       .eq("user_id", apiKeyData.user_id)
       .maybeSingle()
 
-    if (notifyError) {
-      console.error("⚠️ [알림 설정 조회 오류]:", notifyError.message)
-    }
-
-    const emailAlertEnabled = notifySetting?.email_alert ?? true // 기본값 true
+    const emailAlertEnabled = notifySetting?.email_alert ?? true
 
     // ------------------------------------------------------------
     // 5️⃣ 위협 심각도 자동 분류
@@ -140,11 +124,40 @@ export async function POST(req: Request) {
 
     if (insertError) {
       console.error("❌ [DB insert error]:", insertError.message)
-      return NextResponse.json({ error: "Database insert failed" }, { status: 500 })
+      return NextResponse.json({ error: insertError.message }, { status: 500 })
     }
 
     // ------------------------------------------------------------
-    // 7️⃣ 이메일 발송 조건 검사
+    // 7️⃣ threat_ips 테이블 upsert
+    // ------------------------------------------------------------
+    if (flow_info?.src_ip) {
+      const ipData = {
+        api_key_id: apiKeyData.id,
+        ip_address: flow_info.src_ip,
+        country: country || null,
+        threat_level: severity,
+        detected_at: new Date().toISOString(),
+      }
+
+      const { data: ipInsert, error: ipError } = await supabaseAdmin
+        .from("threat_ips")
+        .upsert(ipData, { onConflict: "api_key_id,ip_address" })
+        .select()
+
+      console.log("✅ threat_ips upsert 결과:", ipInsert)
+      if (ipError) {
+        console.error("❌ [threat_ips upsert error]:", ipError.message)
+        return NextResponse.json(
+          { error: "threat_ips upsert failed", details: ipError.message },
+          { status: 500 }
+        )
+      }
+    } else {
+      console.warn("⚠️ flow_info.src_ip가 없음, threat_ips insert 건너뜀")
+    }
+
+    // ------------------------------------------------------------
+    // 8️⃣ 이메일 발송 조건 검사
     // ------------------------------------------------------------
     const isHighThreat =
       detection_result !== "BENIGN" &&
@@ -163,24 +176,19 @@ export async function POST(req: Request) {
       } catch (mailErr: any) {
         console.error("❌ [Email send failed]:", mailErr.message)
       }
-    } else if (!emailAlertEnabled) {
-      console.log(`📪 이메일 알림 비활성화 → ${userEmail}`)
     }
 
     // ------------------------------------------------------------
-    // 8️⃣ 최종 응답
+    // 9️⃣ 최종 응답
     // ------------------------------------------------------------
     return NextResponse.json({
       message: "✅ Incident logged successfully.",
-      api_key_id: apiKeyData.id,
       severity,
       status,
-      category,
       emailAlertEnabled,
-      timestamp: timestamp || new Date().toISOString(),
     })
   } catch (err: any) {
     console.error("❌ [Unexpected error]:", err.message)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
