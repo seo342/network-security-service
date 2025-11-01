@@ -3,9 +3,10 @@ import { supabaseAdmin } from "@/lib/supabaseServiceClient"
 import { sendImmediateAlertEmail } from "@/lib/email"
 
 /**
- * ✅ 위협 탐지 결과 수신 API (개선 버전)
+ * ✅ 위협 탐지 결과 수신 API (정지 기능 포함)
  * - incidents 테이블에 로그 저장
- * - 사용자의 알림 설정(notification_settings)에 따라 이메일 발송
+ * - inactive API 키는 차단
+ * - 이메일 알림 설정(notification_settings)에 따라 알림 발송
  */
 export async function POST(req: Request) {
   try {
@@ -45,15 +46,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid auth_key" }, { status: 401 })
     }
 
+    // 🧩 추가: 비활성 키 차단 로직
     if (apiKeyData.status !== "active") {
-      return NextResponse.json({ error: "API key inactive" }, { status: 403 })
+      console.warn(`🚫 비활성화된 API 키 접근 시도: ${auth_key}`)
+      return NextResponse.json(
+        { error: "API key is inactive. Access denied." },
+        { status: 403 }
+      )
     }
 
-    //사용 기록 갱신
+    // ------------------------------------------------------------
+    // 3️⃣ API 사용 기록 갱신
+    // ------------------------------------------------------------
     await supabaseAdmin
-    .from("api_keys")
-    .update({last_used:new Date().toISOString()})
-    .eq("id",apiKeyData.id)
+      .from("api_keys")
+      .update({ last_used: new Date().toISOString() })
+      .eq("id", apiKeyData.id)
 
     // ✅ 이메일 추출 (profiles 관계 필드 안전 처리)
     let userEmail: string | undefined
@@ -72,7 +80,7 @@ export async function POST(req: Request) {
     }
 
     // ------------------------------------------------------------
-    // 3️⃣ 이메일 알림 설정(notification_settings) 조회
+    // 4️⃣ 이메일 알림 설정(notification_settings) 조회
     // ------------------------------------------------------------
     const { data: notifySetting, error: notifyError } = await supabaseAdmin
       .from("notification_settings")
@@ -87,7 +95,7 @@ export async function POST(req: Request) {
     const emailAlertEnabled = notifySetting?.email_alert ?? true // 기본값 true
 
     // ------------------------------------------------------------
-    // 4️⃣ 위협 심각도 자동 분류
+    // 5️⃣ 위협 심각도 자동 분류
     // ------------------------------------------------------------
     const severity =
       detection_result === "BENIGN"
@@ -101,7 +109,7 @@ export async function POST(req: Request) {
     const status = detection_result === "BENIGN" ? "resolved" : "active"
 
     // ------------------------------------------------------------
-    // 5️⃣ incidents 테이블에 삽입
+    // 6️⃣ incidents 테이블에 삽입
     // ------------------------------------------------------------
     const { data: inserted, error: insertError } = await supabaseAdmin
       .from("incidents")
@@ -136,7 +144,7 @@ export async function POST(req: Request) {
     }
 
     // ------------------------------------------------------------
-    // 6️⃣ 이메일 발송 조건 검사
+    // 7️⃣ 이메일 발송 조건 검사
     // ------------------------------------------------------------
     const isHighThreat =
       detection_result !== "BENIGN" &&
@@ -160,7 +168,7 @@ export async function POST(req: Request) {
     }
 
     // ------------------------------------------------------------
-    // 7️⃣ 응답 반환
+    // 8️⃣ 최종 응답
     // ------------------------------------------------------------
     return NextResponse.json({
       message: "✅ Incident logged successfully.",

@@ -20,38 +20,41 @@ interface Threat {
   severity: string
 }
 
-export default function ThreatTable() {
+/**
+ * ✅ 특정 API 키 기반 위협 로그 테이블
+ * - incidents 테이블에서 api_key_id로 필터링
+ * - 5초마다 자동 갱신
+ */
+export default function ThreatTable({ apiKeyId }: { apiKeyId: string }) {
   const [threats, setThreats] = useState<Threat[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   // ✅ timestamp 포맷
   const formatTime = (timestamp: string) => {
     if (!timestamp) return "-"
-    const iso = timestamp.replace(" ", "T")
-    const date = new Date(iso)
+    const date = new Date(timestamp)
     if (isNaN(date.getTime())) return "-"
     const pad = (n: number) => n.toString().padStart(2, "0")
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} `
-         + `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+      + `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
   }
 
-  // ✅ incidents 데이터 fetch
+  // ✅ Supabase에서 incidents 불러오기
   const fetchThreats = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error("로그인이 필요합니다.")
+      if (!apiKeyId) return
 
-      const res = await fetch("/dashboard/incidents", {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      })
+      const { data, error } = await supabase
+        .from("incidents")
+        .select("id, time, source_ip, category, severity, status")
+        .eq("api_key_id", apiKeyId)
+        .order("time", { ascending: false })
+        .limit(50)
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      const data = json.incidents || json
+      if (error) throw error
 
-      const mapped = data.map((item: any) => ({
+      const mapped = (data || []).map((item) => ({
         id: item.id,
         time: formatTime(item.time),
         ip: item.source_ip ?? "-",
@@ -65,6 +68,8 @@ export default function ThreatTable() {
     } catch (err: any) {
       console.error("🚨 incidents fetch 실패:", err.message)
       setError("서버에서 데이터를 불러올 수 없습니다.")
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -73,13 +78,17 @@ export default function ThreatTable() {
     fetchThreats()
     const interval = setInterval(fetchThreats, 5000)
     return () => clearInterval(interval)
-  }, [])
+  }, [apiKeyId])
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>위협 분석 대시보드</CardTitle>
-        <CardDescription>실시간 탐지된 위협 정보 (내 API 키 기준)</CardDescription>
+        <CardDescription>
+          {apiKeyId
+            ? `API 키 ${apiKeyId} 기준 실시간 탐지된 위협 정보`
+            : "API 키가 선택되지 않았습니다."}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
@@ -99,6 +108,12 @@ export default function ThreatTable() {
                 <tr>
                   <td colSpan={6} className="text-center text-red-500 py-6">
                     ⚠️ {error}
+                  </td>
+                </tr>
+              ) : loading ? (
+                <tr>
+                  <td colSpan={6} className="text-center text-muted-foreground py-6">
+                    ⏳ 로딩 중...
                   </td>
                 </tr>
               ) : threats.length === 0 ? (

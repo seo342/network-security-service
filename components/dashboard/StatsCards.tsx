@@ -18,11 +18,11 @@ interface Stats {
 }
 
 /**
- * ✅ 사용자별 트래픽 통계 카드
- * - 자신의 API 키와 연관된 traffic_logs 기준
- * - 실시간 반영 (INSERT 시 자동 갱신)
+ * ✅ 특정 API 키 기준 트래픽 통계 카드
+ * - traffic_logs 테이블에서 api_key_id로 필터링
+ * - 실시간 반영 (INSERT 이벤트)
  */
-export default function StatsCards() {
+export default function StatsCards({ apiKeyId }: { apiKeyId: string }) {
   const [stats, setStats] = useState<Stats>({
     totalRequests: 0,
     threatsDetected: 0,
@@ -30,43 +30,39 @@ export default function StatsCards() {
     uptime: "99.9%",
   })
 
-  // ✅ 통계 계산
   const fetchStats = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error("로그인이 필요합니다.")
+      if (!apiKeyId) return
 
-      // ✅ 유저 토큰 기반 API 요청
-      const res = await fetch("/dashboard/traffic", {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      const logs = json.logs || []
+      const { data, error } = await supabase
+        .from("traffic_logs")
+        .select("detection_result, category, flow_info, source_ip")
+        .eq("api_key_id", apiKeyId)
+
+      if (error) throw error
+      const logs = data || []
 
       // ✅ 총 요청 수
       const totalRequests = logs.length
 
-      // ✅ 위협 탐지: BENIGN, NORMAL 제외
-      const threatsDetected = logs.filter((log: any) => {
+      // ✅ 위협 탐지 수
+      const threatsDetected = logs.filter((log) => {
         const type = (log.detection_result || log.category || "").toLowerCase()
         return type && !["benign", "normal"].includes(type)
       }).length
 
-      // ✅ 차단된 IP: 위협 발생 source_ip 고유 개수
+      // ✅ 차단된 IP (고유 src_ip 기준)
       const blockedIPs = new Set(
         logs
-          .filter((log: any) => {
+          .filter((log) => {
             const type = (log.detection_result || log.category || "").toLowerCase()
             return type && !["benign", "normal"].includes(type)
           })
-          .map((log: any) => log.flow_info?.src_ip ?? log.source_ip)
+          .map((log) => log.flow_info?.src_ip ?? log.source_ip)
       ).size
 
-      // ✅ 가동률 (정상 비율)
-      const benignCount = logs.filter((log: any) => {
+      // ✅ 가동률 계산
+      const benignCount = logs.filter((log) => {
         const type = (log.detection_result || log.category || "").toLowerCase()
         return ["benign", "normal"].includes(type)
       }).length
@@ -87,7 +83,7 @@ export default function StatsCards() {
     }
   }
 
-  // ✅ 마운트 및 실시간 반영
+  // ✅ 실시간 반영 (INSERT 시)
   useEffect(() => {
     fetchStats()
 
@@ -96,16 +92,18 @@ export default function StatsCards() {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "traffic_logs" },
-        () => fetchStats()
+        (payload) => {
+          if (payload.new.api_key_id === apiKeyId) fetchStats()
+        }
       )
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [apiKeyId])
 
-  // ✅ UI
+  // ✅ UI 렌더링
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
       {/* 총 요청 수 */}
@@ -115,10 +113,8 @@ export default function StatsCards() {
           <TrendingUp className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">
-            {stats.totalRequests.toLocaleString()}
-          </div>
-          <p className="text-xs text-muted-foreground">내 API 키 기준</p>
+          <div className="text-2xl font-bold">{stats.totalRequests.toLocaleString()}</div>
+          <p className="text-xs text-muted-foreground">API 키별 총 트래픽</p>
         </CardContent>
       </Card>
 
@@ -132,7 +128,7 @@ export default function StatsCards() {
           <div className="text-2xl font-bold text-destructive">
             {stats.threatsDetected.toLocaleString()}
           </div>
-          <p className="text-xs text-muted-foreground">내 로그 기준</p>
+          <p className="text-xs text-muted-foreground">탐지된 공격 수</p>
         </CardContent>
       </Card>
 
@@ -146,7 +142,7 @@ export default function StatsCards() {
           <div className="text-2xl font-bold text-accent">
             {stats.blockedIPs.toLocaleString()}
           </div>
-          <p className="text-xs text-muted-foreground">위협 IP 기준</p>
+          <p className="text-xs text-muted-foreground">위협 발생 IP 수</p>
         </CardContent>
       </Card>
 
@@ -158,7 +154,7 @@ export default function StatsCards() {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-green-500">{stats.uptime}</div>
-          <p className="text-xs text-muted-foreground">내 API 기준</p>
+          <p className="text-xs text-muted-foreground">정상 트래픽 비율</p>
         </CardContent>
       </Card>
     </div>
