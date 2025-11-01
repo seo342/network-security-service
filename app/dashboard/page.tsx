@@ -1,129 +1,90 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useEffect, useState } from "react"
+import { createClient } from "@supabase/supabase-js"
+import { useRouter } from "next/navigation"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Key, ShieldCheck, Clock } from "lucide-react"
 
-// 분리된 대시보드 컴포넌트
-import BlockedIPs from "@/components/dashboard/BlockedIPsTabs"
-import RecentThreats from "@/components/dashboard/RecentThreats"
-import Settings from "@/components/dashboard/SettingsTab"
-import StatsCards from "@/components/dashboard/StatsCards"
-import SystemStatus from "@/components/dashboard/SystemStatus"
-import ThreatTable from "@/components/dashboard/ThreatsTable"
-import TrafficChart from "@/components/dashboard/TrafficChart"
-import TrafficLogs from "@/components/dashboard/TrafficLogs"
-import PacketLogFilters, { PacketFilterState } from "@/components/dashboard/PacketLogFilters"
-import ApiUsage from "@/components/api/ApiUsage"
-import AnalyticsPanel from "@/components/analytics/AnalyticsPanel"
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
-// Mock 데이터
-const generateMockData = () => {
-  const now = new Date()
-  const data = []
-  for (let i = 23; i >= 0; i--) {
-    const time = new Date(now.getTime() - i * 60 * 60 * 1000)
-    data.push({
-      time: time.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }),
-      requests: Math.floor(Math.random() * 1000) + 500,
-      threats: Math.floor(Math.random() * 50) + 10,
-    })
-  }
-  return data
+interface ApiKey {
+  id: string
+  name: string
+  created_at: string
+  status: string
+  description: string
+  last_used: string
 }
 
-const mockBlockedIPs = [
-  { ip: "14.44.444.44", country: "북한", reason: "위험 국가", blockedAt: "17:11:13" },
-  { ip: "123.45.67.89", country: "중국", reason: "DDoS 공격", blockedAt: "16:45:22" },
-]
+export default function ApiKeysPage() {
+  const router = useRouter()
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
+  const [loading, setLoading] = useState(true)
 
-export default function DashboardPage() {
-  const [chartData, setChartData] = useState(generateMockData())
-  const [stats, setStats] = useState({
-    totalRequests: 1024,
-    threatsDetected: 42,
-    blockedIPs: 15,
-    uptime: "99.9%",
-  })
-
-  // ✅ 필터 상태
-  const [filters, setFilters] = useState<PacketFilterState>({
-    timeRange: "30m",
-    protocols: { TCP: true, UDP: true, ICMP: true, OTHER: true },
-  })
-
-  // 실시간 업데이트 시뮬레이션
   useEffect(() => {
-    const interval = setInterval(() => {
-      setChartData(generateMockData())
-      setStats((prev) => ({
-        ...prev,
-        totalRequests: prev.totalRequests + Math.floor(Math.random() * 10),
-        threatsDetected: prev.threatsDetected + Math.floor(Math.random() * 2),
-      }))
-    }, 5000)
+    const loadKeys = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) throw new Error("로그인이 필요합니다.")
 
-    return () => clearInterval(interval)
+        const { data, error } = await supabase
+          .from("api_keys")
+          .select("id,name,created_at,status,description,last_used")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+
+        if (error) throw error
+        setApiKeys(data || [])
+      } catch (err) {
+        console.error("❌ API 키 불러오기 실패:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadKeys()
   }, [])
 
+  if (loading) return <p className="text-center py-10">🔄 불러오는 중...</p>
+
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-6">
-        {/* 상단 통계 */}
-        <StatsCards/>
+    <div className="min-h-screen bg-background px-6 py-8">
+      <h2 className="text-xl font-semibold mb-6">🔑 내 API 키 목록</h2>
 
-        {/* 탭 영역 */}
-        <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="overview">개요</TabsTrigger>
-            <TabsTrigger value="logs">트래픽 로그</TabsTrigger>
-            <TabsTrigger value="threats">위협 분석</TabsTrigger>
-            <TabsTrigger value="blocked">차단된 IP</TabsTrigger>
-            <TabsTrigger value="analytics">분석</TabsTrigger>
-            <TabsTrigger value="settings">설정</TabsTrigger>
-          </TabsList>
-
-          {/* 개요 */}
-          <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <TrafficChart/>
-              <ApiUsage/>
-              <RecentThreats />
-              <SystemStatus />
-            </div>
-          </TabsContent>
-
-          {/* 트래픽 로그 */}
-          <TabsContent value="logs">
-            <div className="flex gap-4">
-              {/* 좌측: 필터창 */}
-              <PacketLogFilters filters={filters} setFilters={setFilters} />
-
-              {/* 우측: 로그 테이블 */}
-              <TrafficLogs />
-            </div>
-          </TabsContent>
-
-          {/* 위협 분석 */}
-          <TabsContent value="threats">
-            <ThreatTable/>
-          </TabsContent>
-
-          {/* 차단된 IP */}
-          <TabsContent value="blocked">
-            <BlockedIPs blockedIPs={mockBlockedIPs} />
-          </TabsContent>
-
-
-          <TabsContent value="analytics">
-            <AnalyticsPanel />
-          </TabsContent>
-
-          {/* 설정 */}
-          <TabsContent value="settings">
-            <Settings />
-          </TabsContent>
-        </Tabs>
-      </div>
+      {apiKeys.length === 0 ? (
+        <p className="text-muted-foreground text-center">등록된 API 키가 없습니다.</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {apiKeys.map((key) => (
+            <Card
+              key={key.id}
+              onClick={() => router.push(`/dashboard/${key.id}`)} // ✅ [id] 경로로 이동
+              className="hover:shadow-md transition cursor-pointer hover:bg-accent/10"
+            >
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-base font-medium flex items-center gap-2">
+                  <Key className="h-4 w-4 text-primary" /> {key.name}
+                </CardTitle>
+                <span className="text-sm font-semibold">
+                  {key.status.toUpperCase()}
+                </span>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4" /> {key.description || "일반 API 키"}
+                </p>
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Clock className="h-4 w-4" />{" "}
+                  {new Date(key.created_at).toLocaleDateString("ko-KR")}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

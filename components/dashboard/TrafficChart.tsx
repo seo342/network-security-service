@@ -31,11 +31,11 @@ interface ChartData {
 }
 
 /**
- * ✅ 실시간 트래픽 모니터링 차트 (사용자별 traffic_logs)
- * - Supabase traffic_logs 테이블에서 시간대별 요청/위협 수 계산
+ * ✅ 실시간 트래픽 모니터링 차트 (특정 API 키)
+ * - Supabase traffic_logs 테이블에서 api_key_id별 시간대별 요청/위협 수 계산
  * - 5초마다 자동 갱신
  */
-export default function TrafficChart() {
+export default function TrafficChart({ apiKeyId }: { apiKeyId: string }) {
   const [data, setData] = useState<ChartData[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -46,28 +46,30 @@ export default function TrafficChart() {
     const date = new Date(timestamp)
     if (isNaN(date.getTime())) return "-"
     const pad = (n: number) => n.toString().padStart(2, "0")
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
+      date.getHours()
+    )}:${pad(date.getMinutes())}`
   }
 
-  // ✅ API에서 데이터 불러오기
+  // ✅ Supabase에서 데이터 불러오기
   const fetchData = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) throw new Error("로그인이 필요합니다.")
+      if (!apiKeyId) return
 
-      const res = await fetch("/dashboard/traffic", {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json = await res.json()
-      const logs = json.logs || []
+      const { data, error } = await supabase
+        .from("traffic_logs")
+        .select("time, detection_result, category")
+        .eq("api_key_id", apiKeyId)
+        .order("time", { ascending: true })
+        .limit(500)
+
+      if (error) throw error
+      const logs = data || []
 
       // ✅ 시간대별 요청/위협 카운트 집계
       const grouped: Record<string, { requests: number; threats: number }> = {}
 
-      logs.forEach((log: any) => {
+      logs.forEach((log) => {
         const key = formatTime(log.time)
         if (!grouped[key]) grouped[key] = { requests: 0, threats: 0 }
 
@@ -104,13 +106,17 @@ export default function TrafficChart() {
     fetchData()
     const interval = setInterval(fetchData, 5000)
     return () => clearInterval(interval)
-  }, [])
+  }, [apiKeyId])
 
   return (
     <Card className="lg:col-span-2">
       <CardHeader>
         <CardTitle>실시간 트래픽 모니터링</CardTitle>
-        <CardDescription>사용자 API 키 기반 시간별 요청/위협 탐지 현황</CardDescription>
+        <CardDescription>
+          {apiKeyId
+            ? `API 키 ${apiKeyId} 기준 시간별 요청/위협 탐지 현황`
+            : "API 키가 선택되지 않았습니다."}
+        </CardDescription>
       </CardHeader>
 
       <CardContent>

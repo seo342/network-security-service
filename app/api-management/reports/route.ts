@@ -7,7 +7,7 @@ import path from "path"
 
 export async function POST(req: Request) {
   try {
-    const { period, format } = await req.json()
+    const { period, format, api_key_id } = await req.json() // ✅ 특정 키 ID 받기
 
     // 🔹 기간 계산
     const now = new Date()
@@ -29,8 +29,8 @@ export async function POST(req: Request) {
         start.setDate(now.getDate() - 30)
     }
 
-    // ✅ Supabase 조인 쿼리
-    const { data, error } = await supabaseAdmin
+    // ✅ Supabase 쿼리
+    let query = supabaseAdmin
       .from("api_usage")
       .select(
         `
@@ -44,12 +44,18 @@ export async function POST(req: Request) {
         api_keys:api_key_id (
           name,
           status,
-          auth_key
+          auth_key,
+          description
         )
       `
       )
       .gte("created_at", start.toISOString())
       .order("created_at", { ascending: false })
+
+    // ✅ 특정 키만 필터링
+    if (api_key_id) query = query.eq("api_key_id", api_key_id)
+
+    const { data, error } = await query
 
     if (error) throw new Error(error.message)
     if (!data || data.length === 0) {
@@ -79,6 +85,7 @@ export async function POST(req: Request) {
           { id: "last_used", title: "Last Used" },
           { id: "api_keys.name", title: "API Key Name" },
           { id: "api_keys.status", title: "Status" },
+          { id: "api_keys.description", title: "Description" },
         ],
       })
 
@@ -93,6 +100,7 @@ export async function POST(req: Request) {
         last_used: row.last_used,
         "api_keys.name": row.api_keys?.name,
         "api_keys.status": row.api_keys?.status,
+        "api_keys.description": row.api_keys?.description || "-",
       }))
 
       const csvContent =
@@ -137,6 +145,7 @@ export async function POST(req: Request) {
         }
 
         const name = row.api_keys?.name || "N/A"
+        const desc = row.api_keys?.description || "-"
         const status = row.api_keys?.status || "-"
         const endpoint = row.endpoint || "-"
         const requests = row.requests ?? 0
@@ -147,6 +156,8 @@ export async function POST(req: Request) {
           : "-"
 
         doc.text(`${idx + 1}. [${name}] (${status})`, marginLeft, y)
+        y += 6
+        doc.text(`   설명: ${desc}`, marginLeft, y)
         y += 6
         doc.text(`   엔드포인트: ${endpoint}`, marginLeft, y)
         y += 6
