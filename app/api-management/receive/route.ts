@@ -144,7 +144,7 @@ export async function POST(req: Request) {
       detection_result.toUpperCase() !== "BENIGN" &&
       (severity === "high" ||
         parsedConfidence >= 0.9 ||
-        /(dos|ddos|malware|ransom|trojan|exploit|brute|attack)/i.test(
+        /(ICMP_FLOOD|OTHER_TCP_FLOOD|Port_Scan|SYN_FLOOD|Slowloris_Attack|UDP_AMPLIFY|UDP_FLOOD|attack)/i.test(
           detection_result
         ))
 
@@ -154,6 +154,7 @@ export async function POST(req: Request) {
         console.log(`📨 이메일 발송 완료 (${userEmail})`)
       } catch (mailErr: any) {
         console.error("❌ [Email send failed]:", mailErr.message)
+        throw mailErr
       }
     }
 

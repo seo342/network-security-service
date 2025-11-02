@@ -58,9 +58,9 @@ export default function FeaturesSection() {
                 <div className="h-12 w-12 bg-destructive/10 rounded-lg flex items-center justify-center mb-4">
                   <Globe className="h-6 w-6 text-destructive" />
                 </div>
-                <CardTitle>외국 IP 차단</CardTitle>
+                <CardTitle>IP 차단</CardTitle>
                 <CardDescription>
-                  특정 국가의 IP 접속을 자동으로 차단하고 관리자에게 실시간 알림을 전송합니다.
+                  IP 접속을 자동으로 차단하고 관리자에게 실시간 알림을 전송합니다.
                 </CardDescription>
               </CardHeader>
             </Card>
