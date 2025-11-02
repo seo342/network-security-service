@@ -3,11 +3,11 @@ import { supabaseAdmin } from "@/lib/supabaseServiceClient"
 import { sendImmediateAlertEmail } from "@/lib/email"
 
 /**
- * ✅ 위협 탐지 결과 수신 API (최신 통합 버전)
- * - incidents 테이블에 로그 저장
- * - threat_ips 테이블에 IP별 위협 정보 저장 (api_key_id 기준)
+ * ✅ 위협 탐지 결과 수신 API (타입 개선 완전판)
+ * - data.json 그대로 수신 가능
+ * - incidents 테이블에 key_features_evidence, all_probabilities 저장
  * - inactive API 키 차단
- * - 이메일 알림 설정(notification_settings)에 따라 발송
+ * - 이메일 알림 유지
  */
 export async function POST(req: Request) {
   try {
@@ -19,22 +19,20 @@ export async function POST(req: Request) {
       auth_key,
       detection_result,
       confidence,
-      Destination_Port,
       category,
-      flow_info,
-      flow_duration,
-      packet_count,
-      byte_count,
       timestamp,
-      top_candidates,
+      flow_info,
       country,
+      top_candidates,
+      key_features_evidence,
+      all_probabilities,
     } = body
 
     if (!auth_key)
       return NextResponse.json({ error: "Missing auth_key" }, { status: 400 })
 
     // ------------------------------------------------------------
-    // 2️⃣ API 키 검증 및 사용자 정보 조회
+    // 2️⃣ API 키 검증
     // ------------------------------------------------------------
     const { data: apiKeyData, error: keyError } = await supabaseAdmin
       .from("api_keys")
@@ -45,6 +43,15 @@ export async function POST(req: Request) {
     if (keyError || !apiKeyData)
       return NextResponse.json({ error: "Invalid auth_key" }, { status: 401 })
 
+    // ✅ 타입 문제 해결: profiles를 any로 캐스팅
+    const profileField = (apiKeyData as any).profiles
+    const userEmail = Array.isArray(profileField)
+      ? profileField[0]?.email
+      : profileField?.email
+
+    // ------------------------------------------------------------
+    // 3️⃣ API 키 상태 확인
+    // ------------------------------------------------------------
     if (apiKeyData.status !== "active") {
       console.warn(`🚫 비활성화된 API 키 접근 시도: ${auth_key}`)
       return NextResponse.json(
@@ -54,21 +61,15 @@ export async function POST(req: Request) {
     }
 
     // ------------------------------------------------------------
-    // 3️⃣ API 사용 기록 업데이트
+    // 4️⃣ 마지막 사용 시간 갱신
     // ------------------------------------------------------------
     await supabaseAdmin
       .from("api_keys")
       .update({ last_used: new Date().toISOString() })
       .eq("id", apiKeyData.id)
 
-    // ✅ 이메일 추출 (profiles 관계 필드 안전 처리)
-    const profileField = (apiKeyData as any).profiles
-    const userEmail = Array.isArray(profileField)
-      ? profileField[0]?.email
-      : profileField?.email
-
     // ------------------------------------------------------------
-    // 4️⃣ 알림 설정(notification_settings)
+    // 5️⃣ 알림 설정 조회
     // ------------------------------------------------------------
     const { data: notifySetting } = await supabaseAdmin
       .from("notification_settings")
@@ -79,48 +80,56 @@ export async function POST(req: Request) {
     const emailAlertEnabled = notifySetting?.email_alert ?? true
 
     // ------------------------------------------------------------
-    // 5️⃣ 위협 심각도 자동 분류
+    // 6️⃣ confidence 문자열 → 숫자 변환
+    // ------------------------------------------------------------
+    const parsedConfidence =
+      typeof confidence === "string"
+        ? parseFloat(confidence.replace("%", "")) / 100
+        : confidence ?? 0
+
+    // ------------------------------------------------------------
+    // 7️⃣ 심각도 및 상태 계산
     // ------------------------------------------------------------
     const severity =
-      detection_result === "BENIGN"
+      detection_result?.toUpperCase() === "BENIGN"
         ? "low"
-        : confidence >= 0.8
+        : parsedConfidence >= 0.8
         ? "high"
-        : confidence >= 0.5
+        : parsedConfidence >= 0.5
         ? "medium"
         : "low"
 
-    const status = detection_result === "BENIGN" ? "resolved" : "active"
+    const status =
+      detection_result?.toUpperCase() === "BENIGN" ? "resolved" : "active"
 
     // ------------------------------------------------------------
-    // 6️⃣ incidents 테이블에 삽입
+    // 8️⃣ incidents 테이블 삽입
     // ------------------------------------------------------------
-    const { data: inserted, error: insertError } = await supabaseAdmin
-      .from("incidents")
-      .insert([
-        {
-          time: timestamp || new Date().toISOString(),
-          detection_result,
-          confidence,
-          category,
-          severity,
-          status,
-          source_ip: flow_info?.src_ip,
-          destination_ip: flow_info?.dst_ip,
-          destination_port: Destination_Port,
-          protocol: flow_info?.proto,
-          country: country || null,
-          flow_duration,
-          packet_count,
-          byte_count,
-          flow_info,
-          top_candidates,
-          auth_key,
-          api_key_id: apiKeyData.id,
-        },
-      ])
-      .select()
-      .single()
+    const { error: insertError } = await supabaseAdmin.from("incidents").insert([
+      {
+        time: timestamp || new Date().toISOString(),
+        detection_result,
+        confidence: parsedConfidence,
+        category,
+        severity,
+        status,
+        source_ip: flow_info?.src_ip ?? null,
+        destination_ip: flow_info?.dst_ip ?? null,
+        destination_port: flow_info?.dst_port ?? null,
+        protocol: flow_info?.proto ?? null,
+        country: country ?? null,
+        flow_duration: flow_info?.flow_duration ?? null,
+        packet_count: flow_info?.packet_count ?? null,
+        byte_count: flow_info?.byte_count ?? null,
+        flow_info: flow_info ?? null,
+        top_candidates: top_candidates ?? null,
+        key_features_evidence: key_features_evidence ?? null, // ✅ JSON 그대로 저장
+        all_probabilities: all_probabilities ?? null, // ✅ JSON 그대로 저장
+        auth_key,
+        api_key_id: apiKeyData.id,
+        user_id: apiKeyData.user_id,
+      },
+    ])
 
     if (insertError) {
       console.error("❌ [DB insert error]:", insertError.message)
@@ -128,50 +137,20 @@ export async function POST(req: Request) {
     }
 
     // ------------------------------------------------------------
-    // 7️⃣ threat_ips 테이블 upsert
-    // ------------------------------------------------------------
-    if (flow_info?.src_ip) {
-      const ipData = {
-        api_key_id: apiKeyData.id,
-        ip_address: flow_info.src_ip,
-        country: country || null,
-        threat_level: severity,
-        detected_at: new Date().toISOString(),
-      }
-
-      const { data: ipInsert, error: ipError } = await supabaseAdmin
-        .from("threat_ips")
-        .upsert(ipData, { onConflict: "api_key_id,ip_address" })
-        .select()
-
-      console.log("✅ threat_ips upsert 결과:", ipInsert)
-      if (ipError) {
-        console.error("❌ [threat_ips upsert error]:", ipError.message)
-        return NextResponse.json(
-          { error: "threat_ips upsert failed", details: ipError.message },
-          { status: 500 }
-        )
-      }
-    } else {
-      console.warn("⚠️ flow_info.src_ip가 없음, threat_ips insert 건너뜀")
-    }
-
-    // ------------------------------------------------------------
-    // 8️⃣ 이메일 발송 조건 검사
+    // 9️⃣ 이메일 발송 (고위험만)
     // ------------------------------------------------------------
     const isHighThreat =
-      detection_result !== "BENIGN" &&
-      (
-        severity === "high" ||
-        (confidence && confidence >= 0.9) ||
+      detection_result &&
+      detection_result.toUpperCase() !== "BENIGN" &&
+      (severity === "high" ||
+        parsedConfidence >= 0.9 ||
         /(dos|ddos|malware|ransom|trojan|exploit|brute|attack)/i.test(
           detection_result
-        )
-      )
+        ))
 
     if (emailAlertEnabled && isHighThreat) {
       try {
-        await sendImmediateAlertEmail(inserted, userEmail)
+        await sendImmediateAlertEmail(body, userEmail)
         console.log(`📨 이메일 발송 완료 (${userEmail})`)
       } catch (mailErr: any) {
         console.error("❌ [Email send failed]:", mailErr.message)
@@ -179,7 +158,7 @@ export async function POST(req: Request) {
     }
 
     // ------------------------------------------------------------
-    // 9️⃣ 최종 응답
+    // ✅ 최종 응답
     // ------------------------------------------------------------
     return NextResponse.json({
       message: "✅ Incident logged successfully.",
