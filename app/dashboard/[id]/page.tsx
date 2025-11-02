@@ -12,10 +12,11 @@ import StatsCards from "@/components/dashboard/StatsCards"
 import SystemStatus from "@/components/dashboard/SystemStatus"
 import ThreatTable from "@/components/dashboard/ThreatsTable"
 import TrafficChart from "@/components/dashboard/TrafficChart"
-import TrafficLogs from "@/components/dashboard/TrafficLogs"
-import PacketLogFilters, { PacketFilterState } from "@/components/dashboard/PacketLogFilters"
 import ApiUsage from "@/components/dashboard/ApiUsage"
 import AnalyticsPanel from "@/components/analytics/AnalyticsPanel"
+
+// ✅ 새 통합 버전
+import PacketLogDashboard from "@/components/dashboard/TrafficLogs"
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,11 +24,11 @@ const supabase = createClient(
 )
 
 export default function DashboardPage() {
-  const { id } = useParams() as {id:string} // ✅ URL에서 API 키 ID 읽기
+  const { id } = useParams() as { id: string } // ✅ URL에서 API 키 ID 읽기
   const [apiKey, setApiKey] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
-  // ✅ 통계 및 차트 Mock (실제 연결 시 Supabase로 대체 가능)
+  // ✅ 통계 및 차트 Mock
   const generateMockData = () => {
     const now = new Date()
     const data = []
@@ -53,11 +54,6 @@ export default function DashboardPage() {
     threatsDetected: 0,
     blockedIPs: 0,
     uptime: "99.9%",
-  })
-
-  const [filters, setFilters] = useState<PacketFilterState>({
-    timeRange: "30m",
-    protocols: { TCP: true, UDP: true, ICMP: true, OTHER: true },
   })
 
   // ✅ API 키 정보 로드
@@ -130,10 +126,7 @@ export default function DashboardPage() {
 
           {/* 📜 트래픽 로그 */}
           <TabsContent value="logs">
-            <div className="flex gap-4">
-              <PacketLogFilters filters={filters} setFilters={setFilters} />
-              <TrafficLogs apiKeyId={id} filters={filters} />
-            </div>
+            <PacketLogDashboard apiKeyId={id} />
           </TabsContent>
 
           {/* 🚨 위협 분석 */}
