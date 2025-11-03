@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { createClient } from "@supabase/supabase-js"
 import { Button } from "@/components/ui/button"
 import {
   BarChart3,
@@ -15,36 +16,40 @@ import IncidentList from "@/components/analytics/IncidentList"
 import KeyMetrics from "@/components/analytics/KeyMetrics"
 import PatternAnalysis from "@/components/analytics/PatternAnalysis"
 import ThreatTrends from "@/components/analytics/ThreatTrends"
-import {
-  threatTrendData,
-  attackTypeData,
-  countryData,
-  recentIncidents,
-  mockMetrics,
-} from "@/lib/mockData"
 
-export default function AnalyticsPage() {
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+interface AnalyticsPageProps {
+  apiKeyId: string
+}
+
+export default function AnalyticsPage({ apiKeyId }: AnalyticsPageProps) {
   const [selected, setSelected] = useState("metrics")
+  const [loading, setLoading] = useState(true)
+  const [apiKeyName, setApiKeyName] = useState<string>("")
 
-  // ✅ 심각도 배지 색상 로직
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case "높음":
-        return "destructive"
-      case "중간":
-        return "secondary"
-      case "낮음":
-        return "default"
-      default:
-        return "default"
+  // ✅ API 키 이름 불러오기
+  useEffect(() => {
+    const fetchApiKey = async () => {
+      const { data, error } = await supabase
+        .from("api_keys")
+        .select("name")
+        .eq("id", apiKeyId)
+        .single()
+      if (!error && data) setApiKeyName(data.name)
+      setLoading(false)
     }
-  }
+    fetchApiKey()
+  }, [apiKeyId])
 
-  // ✅ 사이드 메뉴 항목
+  if (loading) return <p className="text-center py-10">🔄 분석 데이터 불러오는 중...</p>
+
   const menuItems = [
     { key: "metrics", label: "핵심 지표", icon: <BarChart3 className="h-4 w-4" /> },
     { key: "trends", label: "위협 동향", icon: <Activity className="h-4 w-4" /> },
-    { key: "geography", label: "지역별 분석", icon: <MapPin className="h-4 w-4" /> },
     { key: "patterns", label: "패턴 분석", icon: <ListOrdered className="h-4 w-4" /> },
     { key: "incidents", label: "보안 사고", icon: <AlertTriangle className="h-4 w-4" /> },
   ]
@@ -69,16 +74,18 @@ export default function AnalyticsPage() {
 
       {/* 📊 오른쪽 콘텐츠 영역 */}
       <main className="flex-1 p-6 overflow-y-auto">
-        <h1 className="text-2xl font-bold mb-6">AI 위협 탐지 분석 리포트</h1>
+        <h1 className="text-2xl font-bold mb-6">
+          AI 위협 탐지 분석 리포트{" "}
+          <span className="text-muted-foreground text-sm ml-2">
+            (API Key: {apiKeyName || apiKeyId})
+          </span>
+        </h1>
 
-        {/* ✅ 각 섹션별 컴포넌트 출력 (DB 연동 버전) */}
-        {selected === "metrics" && <KeyMetrics />}
-        {selected === "trends" && <ThreatTrends />}
-        {selected === "geography" && <GeographyAnalysis />}
-        {selected === "patterns" && <PatternAnalysis />}
-        {selected === "incidents" && (
-          <IncidentList />
-        )}
+        {/* ✅ 각 섹션별 컴포넌트 출력 (실제 DB 연동) */}
+        {selected === "metrics" && <KeyMetrics apiKeyId={apiKeyId} />}
+        {selected === "trends" && <ThreatTrends apiKeyId={apiKeyId} />}
+        {selected === "patterns" && <PatternAnalysis apiKeyId={apiKeyId} />}
+        {selected === "incidents" && <IncidentList apiKeyId={apiKeyId} />}
       </main>
     </div>
   )

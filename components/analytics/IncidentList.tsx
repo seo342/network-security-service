@@ -15,10 +15,19 @@ interface Incident {
   country: string
   severity: string
   status: string
-  details?: any // ✅ string | object 모두 대응
+  details?: any
 }
 
-export default function IncidentList() {
+interface IncidentListProps {
+  apiKeyId: string
+}
+
+/**
+ * 🚨 IncidentList (API 키 기반)
+ * - Supabase `incidents` 테이블에서 특정 api_key_id로 필터링
+ * - 최근 보안 사고 10건 표시
+ */
+export default function IncidentList({ apiKeyId }: IncidentListProps) {
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -28,33 +37,7 @@ export default function IncidentList() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 
-  // ✅ 로그인한 유저의 API 키 ID 가져오기
-  const getUserApiKeyId = async (): Promise<number | null> => {
-    try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
-
-      if (userError || !user) return null
-
-      const { data, error } = await supabase
-        .from("api_keys")
-        .select("id")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single()
-
-      if (error) return null
-      return data?.id ?? null
-    } catch (err) {
-      console.error("getUserApiKeyId 오류:", err)
-      return null
-    }
-  }
-
-  // ✅ 심각도 색상 매핑 함수
+  // ✅ 심각도 색상 매핑
   const getSeverityColor = (severity: string): "destructive" | "secondary" | "default" => {
     switch (severity) {
       case "높음":
@@ -68,13 +51,12 @@ export default function IncidentList() {
     }
   }
 
-  // ✅ incidents 테이블에서 최근 보안 사고 불러오기
+  // ✅ incidents 테이블에서 특정 API 키 기반 데이터 불러오기
   useEffect(() => {
     const loadIncidents = async () => {
       try {
-        const apiKeyId = await getUserApiKeyId()
         if (!apiKeyId) {
-          setError("API 키를 찾을 수 없습니다.")
+          setError("API 키가 제공되지 않았습니다.")
           return
         }
 
@@ -96,7 +78,7 @@ export default function IncidentList() {
     }
 
     loadIncidents()
-  }, [])
+  }, [apiKeyId])
 
   if (loading) return <div>📡 보안 사고 데이터를 불러오는 중...</div>
   if (error) return <div>⚠️ {error}</div>
@@ -130,6 +112,7 @@ export default function IncidentList() {
               key={incident.id}
               className="p-4 border border-border/50 rounded-lg hover:bg-muted/30 transition-colors"
             >
+              {/* ✅ 상단 메타 정보 */}
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <Badge variant={getSeverityColor(incident.severity)}>
@@ -143,6 +126,7 @@ export default function IncidentList() {
                 </span>
               </div>
 
+              {/* ✅ 상세 정보 */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground">출발지 IP:</span>
@@ -158,21 +142,14 @@ export default function IncidentList() {
                 </div>
               </div>
 
-              {/* ✅ details 안전 렌더링 */}
+              {/* ✅ details (JSON or string) */}
               {incident.details && (
                 <div className="mt-3 pt-3 border-t border-border/50">
                   <span className="text-muted-foreground text-sm">상세 정보:</span>
-
-                  {/* 객체일 경우 */}
                   {typeof incident.details === "object" ? (
                     <div className="text-sm mt-1 space-y-1">
-                      {"notes" in incident.details && (
-                        <p>📝 {incident.details.notes}</p>
-                      )}
-                      {"action" in incident.details && (
-                        <p>⚙️ {incident.details.action}</p>
-                      )}
-                      {/* 나머지 키 자동 출력 */}
+                      {"notes" in incident.details && <p>📝 {incident.details.notes}</p>}
+                      {"action" in incident.details && <p>⚙️ {incident.details.action}</p>}
                       {Object.entries(incident.details)
                         .filter(([k]) => !["notes", "action"].includes(k))
                         .map(([k, v]) => (
@@ -182,7 +159,6 @@ export default function IncidentList() {
                         ))}
                     </div>
                   ) : (
-                    // 문자열일 경우
                     <p className="text-sm mt-1">{incident.details}</p>
                   )}
                 </div>

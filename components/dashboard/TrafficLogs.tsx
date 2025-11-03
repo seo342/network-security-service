@@ -13,14 +13,17 @@ const supabase = createClient(
 interface TrafficLog {
   id: number
   time: string
-  src_ip: string
-  dst_ip: string
-  destination_port: number
-  flow_duration: number | null
-  packet_count: number | null
-  byte_count: number | null
   detection_result: string
   confidence: number | null
+  core_metrics: {
+    flow_count: number | null
+    packet_count_sum: number | null
+    byte_count_sum: number | null
+    flow_start_rate: number | null
+    src_ip_nunique: number | null
+    dst_ip_nunique: number | null
+    dst_port_nunique: number | null
+  }
 }
 
 const formatTime = (timestamp: string) => {
@@ -31,11 +34,6 @@ const formatTime = (timestamp: string) => {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
-/**
- * ✅ PacketLogDashboard
- * - 상위 컴포넌트: 필터 + 로그 통합
- * - apiKeyId를 기준으로 Supabase 쿼리 수행
- */
 export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
   const [filters, setFilters] = useState<PacketFilterState>({
     timeRange: "1h",
@@ -45,13 +43,30 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
   const [logs, setLogs] = useState<TrafficLog[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [apiKeyName, setApiKeyName] = useState<string>("") // ✅ API 키 이름 상태
 
+  // ✅ API 키 이름 조회
+  useEffect(() => {
+    const fetchApiKeyName = async () => {
+      if (!apiKeyId) return
+      const { data, error } = await supabase
+        .from("api_keys")
+        .select("name")
+        .eq("id", apiKeyId)
+        .maybeSingle()
+
+      if (!error && data) setApiKeyName(data.name)
+    }
+    fetchApiKeyName()
+  }, [apiKeyId])
+
+  // ✅ 로그 조회
   const fetchLogs = async () => {
     try {
       if (!apiKeyId) return
       setLoading(true)
 
-      // ✅ 시간 필터 계산
+      // 시간 범위 계산
       const now = new Date()
       let startTime = new Date()
       switch (filters.timeRange) {
@@ -72,12 +87,6 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
           break
       }
 
-      // ✅ 프로토콜 필터
-      const selectedProtocols = Object.keys(filters.protocols).filter(
-        (proto) => filters.protocols[proto as keyof typeof filters.protocols]
-      )
-
-      // ✅ Supabase 쿼리
       let query = supabase
         .from("traffic_logs")
         .select("*")
@@ -86,31 +95,30 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
         .order("time", { ascending: false })
         .limit(100)
 
-      // 프로토콜 조건 추가
-      if (selectedProtocols.length && selectedProtocols.length < 4) {
-        query = query.in("protocol", selectedProtocols.map((p) => {
-          if (p === "TCP") return 6
-          if (p === "UDP") return 17
-          if (p === "ICMP") return 1
-          return null
-        }).filter((v) => v !== null))
-      }
-
       const { data, error } = await query
       if (error) throw error
 
-      const list: TrafficLog[] = (data || []).map((log: any) => ({
-        id: log.id ?? Math.random(),
-        time: formatTime(log.time),
-        src_ip: log.source_ip ?? log.flow_info?.src_ip ?? "-",
-        dst_ip: log.destination_ip ?? log.flow_info?.dst_ip ?? "-",
-        destination_port: log.destination_port ?? 0,
-        flow_duration: log.flow_duration ?? null,
-        packet_count: log.packet_count ?? null,
-        byte_count: log.byte_count ?? null,
-        detection_result: log.detection_result ?? log.category ?? "Unknown",
-        confidence: log.confidence ?? null,
-      }))
+      const list: TrafficLog[] = (data || []).map((log: any) => {
+        const core =
+          log.key_features_evidence?.core_metrics ||
+          log.flow_info?.core_metrics ||
+          {}
+        return {
+          id: log.id ?? Math.random(),
+          time: formatTime(log.time),
+          detection_result: log.detection_result ?? log.category ?? "Unknown",
+          confidence: log.confidence ?? null,
+          core_metrics: {
+            flow_count: core.flow_count ?? null,
+            packet_count_sum: core.packet_count_sum ?? null,
+            byte_count_sum: core.byte_count_sum ?? null,
+            flow_start_rate: core.flow_start_rate ?? null,
+            src_ip_nunique: core.src_ip_nunique ?? null,
+            dst_ip_nunique: core.dst_ip_nunique ?? null,
+            dst_port_nunique: core.dst_port_nunique ?? null,
+          },
+        }
+      })
 
       setLogs(list)
       setError(null)
@@ -122,7 +130,7 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
     }
   }
 
-  // ✅ 필터 변경 시 자동 업데이트
+  // 필터 변경 시 자동 갱신
   useEffect(() => {
     fetchLogs()
   }, [apiKeyId, filters])
@@ -132,12 +140,16 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
       {/* 왼쪽: 필터 */}
       <PacketLogFilters filters={filters} setFilters={setFilters} />
 
-      {/* 오른쪽: 로그 테이블 */}
+      {/* 오른쪽: 로그 카드 */}
       <Card className="flex-1">
         <CardHeader>
-          <CardTitle>트래픽 로그</CardTitle>
+          <CardTitle>트래픽 요약</CardTitle>
           <CardDescription>
-            {apiKeyId ? `API 키 ID: ${apiKeyId}` : "API 키가 선택되지 않았습니다."}
+            {apiKeyName
+              ? `API 키 이름: ${apiKeyName}`
+              : apiKeyId
+              ? `API 키 ID: ${apiKeyId}`
+              : "API 키가 선택되지 않았습니다."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -146,11 +158,13 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
               <thead className="bg-muted/50">
                 <tr className="border-b">
                   <th className="px-3 py-2 text-left text-xs font-medium">시간</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium">총 플로우 수</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium">총 패킷 수</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium">총 바이트 수</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium">초당 플로우 수</th>
                   <th className="px-3 py-2 text-center text-xs font-medium">출발 IP</th>
                   <th className="px-3 py-2 text-center text-xs font-medium">도착 IP</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium">포트</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium">패킷 수</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium">바이트 수</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium">도착 포트 수</th>
                   <th className="px-3 py-2 text-center text-xs font-medium text-red-600">
                     탐지 결과
                   </th>
@@ -162,34 +176,63 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
               <tbody>
                 {error ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-6 text-red-500">{error}</td>
+                    <td colSpan={10} className="text-center py-6 text-red-500">
+                      {error}
+                    </td>
                   </tr>
                 ) : loading ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-6 text-muted-foreground">⏳ 로딩 중...</td>
+                    <td colSpan={10} className="text-center py-6 text-muted-foreground">
+                      ⏳ 로딩 중...
+                    </td>
                   </tr>
                 ) : logs.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-6 text-muted-foreground">데이터 없음</td>
+                    <td colSpan={10} className="text-center py-6 text-muted-foreground">
+                      데이터 없음
+                    </td>
                   </tr>
                 ) : (
                   logs.map((log) => (
-                    <tr key={log.id} className="border-b hover:bg-muted/30 transition-colors">
+                    <tr
+                      key={log.id}
+                      className="border-b hover:bg-muted/30 transition-colors"
+                    >
                       <td className="px-3 py-2 font-mono">{log.time}</td>
-                      <td className="px-3 py-2 text-center font-mono">{log.src_ip}</td>
-                      <td className="px-3 py-2 text-center font-mono">{log.dst_ip}</td>
-                      <td className="px-3 py-2 text-center">{log.destination_port}</td>
-                      <td className="px-3 py-2 text-center">{log.packet_count ?? "-"}</td>
-                      <td className="px-3 py-2 text-center">{log.byte_count?.toLocaleString() ?? "-"}</td>
-                      <td className={`px-3 py-2 text-center font-semibold ${
-                        log.detection_result?.toUpperCase() === "BENIGN"
-                          ? "text-green-600"
-                          : "text-red-600"
-                      }`}>
+                      <td className="px-3 py-2 text-center">
+                        {log.core_metrics.flow_count ?? "-"}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {log.core_metrics.packet_count_sum ?? "-"}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {log.core_metrics.byte_count_sum?.toLocaleString() ?? "-"}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {log.core_metrics.flow_start_rate ?? "-"}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {log.core_metrics.src_ip_nunique ?? "-"}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {log.core_metrics.dst_ip_nunique ?? "-"}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {log.core_metrics.dst_port_nunique ?? "-"}
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-center font-semibold ${
+                          log.detection_result?.toUpperCase() === "BENIGN"
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }`}
+                      >
                         {log.detection_result || "-"}
                       </td>
                       <td className="px-3 py-2 text-center">
-                        {log.confidence != null ? (log.confidence * 100).toFixed(2) + "%" : "-"}
+                        {log.confidence != null
+                          ? (log.confidence * 100).toFixed(2) + "%"
+                          : "-"}
                       </td>
                     </tr>
                   ))

@@ -18,121 +18,124 @@ import {
 import { createClient } from "@supabase/supabase-js"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
 interface ThreatTrend {
   date: string
-  threats: number
-  blocked: number
-  ddos: number
-  malware: number
-  suspicious: number
+  [key: string]: string | number
 }
 
 interface AttackType {
   name: string
   value: number
   color: string
-  [key: string]: string | number // ✅ 인덱스 시그니처 추가
+  [key:string]:string|number
 }
 
-/**
- * 📈 ThreatTrends
- * - traffic_logs / attack_types 테이블에서 api_key_id 기준으로 데이터 불러옴
- * - 시간별 위협 동향 + 공격 유형 분포 + 유형별 상세 라인 차트
- */
-function ThreatTrendsInner() {
+interface ThreatTrendsProps {
+  apiKeyId: string
+}
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+// ✅ 라벨 목록 + 색상 매핑
+const LABELS = [
+  "정상",
+  "ICMP_FLOOD",
+  "OTHER_TCP_FLOOD",
+  "Port_Scan",
+  "SYN_FLOOD",
+  "Slowloris_Attack",
+  "UDP_AMPLIFY",
+  "UDP_FLOOD",
+]
+
+const LABEL_COLORS: Record<string, string> = {
+  정상: "#22c55e",
+  ICMP_FLOOD: "#ef4444",
+  OTHER_TCP_FLOOD: "#f97316",
+  Port_Scan: "#eab308",
+  SYN_FLOOD: "#3b82f6",
+  Slowloris_Attack: "#a855f7",
+  UDP_AMPLIFY: "#06b6d4",
+  UDP_FLOOD: "#f43f5e",
+}
+
+export default function ThreatTrends({ apiKeyId }: ThreatTrendsProps) {
   const [trendData, setTrendData] = useState<ThreatTrend[]>([])
   const [attackTypeData, setAttackTypeData] = useState<AttackType[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // ✅ 로그인된 사용자의 API 키 ID 가져오기
-  const getUserApiKeyId = async (): Promise<number | null> => {
-    try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
-      if (userError || !user) return null
-
-      const { data, error } = await supabase
-        .from("api_keys")
-        .select("id")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single()
-
-      if (error) return null
-      return data?.id ?? null
-    } catch (err) {
-      console.error("❌ getUserApiKeyId 오류:", err)
-      return null
-    }
-  }
-
-  // ✅ 데이터 불러오기
+  // ✅ incidents 테이블 기반 데이터 로드
   const fetchData = async () => {
     try {
-      const apiKeyId = await getUserApiKeyId()
       if (!apiKeyId) {
-        setError("API 키를 찾을 수 없습니다.")
+        setError("API 키가 제공되지 않았습니다.")
         return
       }
 
-      // 1️⃣ traffic_logs 테이블 (시간별 위협)
-      const { data: traffic, error: trafficErr } = await supabase
-        .from("traffic_logs")
-        .select("time, threats, ddos, malware, suspicious")
+      // incidents 테이블에서 detection_result별 집계
+      const { data: incidents, error } = await supabase
+        .from("incidents")
+        .select("time, detection_result")
         .eq("api_key_id", apiKeyId)
         .order("time", { ascending: true })
-        .limit(50)
+        .limit(500)
 
-      if (trafficErr) throw trafficErr
+      if (error) throw error
 
-      const newTrendData: ThreatTrend[] = (traffic || []).map((item) => {
-        const date = new Date(item.time)
-        const hour = `${date.getHours().toString().padStart(2, "0")}:${date
-          .getMinutes()
-          .toString()
-          .padStart(2, "0")}`
-        return {
-          date: hour,
-          threats: item.threats ?? 0,
-          blocked: Math.floor((item.threats ?? 0) * 0.7),
-          ddos: item.ddos ?? 0,
-          malware: item.malware ?? 0,
-          suspicious: item.suspicious ?? 0,
+      if (!incidents || incidents.length === 0) {
+        setTrendData([])
+        setAttackTypeData([])
+        setLoading(false)
+        return
+      }
+
+      // ---------- 시간대별 라벨 카운트 ----------
+      const hourMap: Record<string, Record<string, number>> = {}
+
+      for (const it of incidents) {
+        const time = new Date(it.time)
+        const hour = `${time.getHours().toString().padStart(2, "0")}:00`
+        const label = it.detection_result ?? "BENIGN"
+
+        const mappedLabel = label === "BENIGN" ? "정상" : label
+        if (!LABELS.includes(mappedLabel)) continue
+
+        if (!hourMap[hour]) {
+          hourMap[hour] = Object.fromEntries(LABELS.map((l) => [l, 0]))
         }
-      })
+        hourMap[hour][mappedLabel]++
+      }
 
-      setTrendData((prev) =>
-        JSON.stringify(prev) === JSON.stringify(newTrendData) ? prev : newTrendData
+      const chartArray: ThreatTrend[] = Object.entries(hourMap).map(
+        ([hour, counts]) => ({
+          date: hour,
+          ...counts,
+        })
       )
 
-      // 2️⃣ attack_types 테이블 (공격 유형별 분포)
-      const { data: attack, error: attackErr } = await supabase
-        .from("attack_types")
-        .select("type, count, color")
-        .eq("api_key_id", apiKeyId)
-        .order("count", { ascending: false })
+      chartArray.sort((a, b) => (a.date > b.date ? 1 : -1))
+      setTrendData(chartArray)
 
-      if (attackErr) throw attackErr
-
-      const newAttackData: AttackType[] = (attack || []).map((a) => ({
-        name: a.type,
-        value: a.count ?? 0,
-        color: a.color || "#3b82f6",
-      }))
-
-      setAttackTypeData((prev) =>
-        JSON.stringify(prev) === JSON.stringify(newAttackData) ? prev : newAttackData
+      // ---------- 전체 공격 유형 분포 ----------
+      const totals: Record<string, number> = Object.fromEntries(
+        LABELS.map((l) => [l, 0])
       )
+      for (const it of incidents) {
+        const mappedLabel = it.detection_result === "BENIGN" ? "정상" : it.detection_result
+        if (LABELS.includes(mappedLabel)) totals[mappedLabel]++
+      }
 
+      const pieArray: AttackType[] = LABELS.map((l) => ({
+        name: l,
+        value: totals[l],
+        color: LABEL_COLORS[l],
+      })).filter((i) => i.value > 0)
+
+      setAttackTypeData(pieArray)
       setError(null)
     } catch (err: any) {
       console.error("❌ ThreatTrends fetch error:", err.message)
@@ -142,50 +145,11 @@ function ThreatTrendsInner() {
     }
   }
 
-  // ✅ 초기 로드 + 8초마다 자동 새로고침
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 8000)
+    const interval = setInterval(fetchData, 10000)
     return () => clearInterval(interval)
-  }, [])
-
-  // ✅ 실시간 구독 (traffic_logs INSERT 이벤트 감시)
-  useEffect(() => {
-    const channel = supabase
-      .channel("realtime:traffic_logs")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "traffic_logs" },
-        (payload) => {
-          const newItem = payload.new
-          const date = new Date(newItem.time)
-          const hour = `${date.getHours().toString().padStart(2, "0")}:${date
-            .getMinutes()
-            .toString()
-            .padStart(2, "0")}`
-
-          setTrendData((prev) => {
-            const updated = [
-              ...prev.slice(-49),
-              {
-                date: hour,
-                threats: newItem.threats ?? 0,
-                blocked: Math.floor((newItem.threats ?? 0) * 0.7),
-                ddos: newItem.ddos ?? 0,
-                malware: newItem.malware ?? 0,
-                suspicious: newItem.suspicious ?? 0,
-              },
-            ]
-            return JSON.stringify(prev) === JSON.stringify(updated) ? prev : updated
-          })
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [])
+  }, [apiKeyId])
 
   const chartData = useMemo(() => trendData, [trendData])
   const pieData = useMemo(() => attackTypeData, [attackTypeData])
@@ -211,7 +175,7 @@ function ThreatTrendsInner() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>위협 탐지 동향</CardTitle>
-            <CardDescription>시간별 위협 탐지 및 차단 현황</CardDescription>
+            <CardDescription>시간별 공격 라벨 분포</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
@@ -219,33 +183,22 @@ function ThreatTrendsInner() {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" />
                 <YAxis stroke="hsl(var(--muted-foreground))" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "white",
-                    border: "1px solid black",
-                    borderRadius: "8px",
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="threats"
-                  stackId="1"
-                  stroke="#ef4444"
-                  fill="#ef4444"
-                  fillOpacity={0.6}
-                  name="총 위협"
-                  isAnimationActive
-                />
-                <Area
-                  type="monotone"
-                  dataKey="blocked"
-                  stackId="2"
-                  stroke="#3b82f6"
-                  fill="#3b82f6"
-                  fillOpacity={0.6}
-                  name="차단됨"
-                  isAnimationActive
-                />
+                <Tooltip />
+                {LABELS.map(
+                  (label) =>
+                    chartData.length > 0 && (
+                      <Area
+                        key={label}
+                        type="monotone"
+                        dataKey={label}
+                        stackId="1"
+                        stroke={LABEL_COLORS[label]}
+                        fill={LABEL_COLORS[label]}
+                        fillOpacity={0.5}
+                        name={label}
+                      />
+                    )
+                )}
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
@@ -255,7 +208,7 @@ function ThreatTrendsInner() {
         <Card>
           <CardHeader>
             <CardTitle>공격 유형별 분포</CardTitle>
-            <CardDescription>탐지된 공격 유형 분석</CardDescription>
+            <CardDescription>탐지된 라벨 비율</CardDescription>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
@@ -266,12 +219,11 @@ function ThreatTrendsInner() {
                   cy="50%"
                   innerRadius={60}
                   outerRadius={100}
-                  paddingAngle={5}
+                  paddingAngle={4}
                   dataKey="value"
-                  isAnimationActive
                 >
                   {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+                    <Cell key={index} fill={entry.color} />
                   ))}
                 </Pie>
                 <Tooltip />
@@ -279,7 +231,10 @@ function ThreatTrendsInner() {
             </ResponsiveContainer>
             <div className="mt-4 space-y-2">
               {pieData.map((item, index) => (
-                <div key={index} className="flex items-center justify-between text-sm">
+                <div
+                  key={index}
+                  className="flex items-center justify-between text-sm"
+                >
                   <div className="flex items-center gap-2">
                     <div
                       className="w-3 h-3 rounded-full"
@@ -299,7 +254,7 @@ function ThreatTrendsInner() {
       <Card>
         <CardHeader>
           <CardTitle>공격 유형별 상세 동향</CardTitle>
-          <CardDescription>각 공격 유형의 시간별 변화 추이</CardDescription>
+          <CardDescription>라벨별 시간 추이 분석</CardDescription>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={300}>
@@ -307,16 +262,20 @@ function ThreatTrendsInner() {
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" />
               <YAxis stroke="hsl(var(--muted-foreground))" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "hsl(var(--card))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: "8px",
-                }}
-              />
-              <Line type="monotone" dataKey="ddos" stroke="#ef4444" strokeWidth={2} name="DDoS 공격" />
-              <Line type="monotone" dataKey="malware" stroke="#f97316" strokeWidth={2} name="악성코드" />
-              <Line type="monotone" dataKey="suspicious" stroke="#eab308" strokeWidth={2} name="의심스러운 활동" />
+              <Tooltip />
+              {LABELS.map(
+                (label) =>
+                  chartData.length > 0 && (
+                    <Line
+                      key={label}
+                      type="monotone"
+                      dataKey={label}
+                      stroke={LABEL_COLORS[label]}
+                      strokeWidth={2}
+                      name={label}
+                    />
+                  )
+              )}
             </LineChart>
           </ResponsiveContainer>
         </CardContent>
@@ -324,5 +283,3 @@ function ThreatTrendsInner() {
     </div>
   )
 }
-
-export default React.memo(ThreatTrendsInner)

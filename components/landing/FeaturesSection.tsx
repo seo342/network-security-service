@@ -46,9 +46,9 @@ export default function FeaturesSection() {
                 <div className="h-12 w-12 bg-accent/10 rounded-lg flex items-center justify-center mb-4">
                   <AlertTriangle className="h-6 w-6 text-accent" />
                 </div>
-                <CardTitle>DDoS 공격 방어</CardTitle>
+                <CardTitle>DDoS 공격 감지</CardTitle>
                 <CardDescription>
-                  대규모 DDoS 공격을 자동으로 감지하고 차단하여 서비스 중단을 방지합니다.
+                  대규모 DDoS 공격을 자동으로 감지하여 서비스 중단을 방지합니다.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -58,9 +58,9 @@ export default function FeaturesSection() {
                 <div className="h-12 w-12 bg-destructive/10 rounded-lg flex items-center justify-center mb-4">
                   <Globe className="h-6 w-6 text-destructive" />
                 </div>
-                <CardTitle>IP 차단</CardTitle>
+                <CardTitle>위협 IP 분석</CardTitle>
                 <CardDescription>
-                  IP 접속을 자동으로 차단하고 관리자에게 실시간 알림을 전송합니다.
+                  위협적인 IP를 분석하여 국가, 위치 등 정보를 제공합니다.
                 </CardDescription>
               </CardHeader>
             </Card>

@@ -23,7 +23,6 @@ import {
   Cell,
 } from "recharts"
 
-/** ✅ 데이터 타입 정의 */
 interface CountryData {
   country: string
   threats: number
@@ -32,12 +31,16 @@ interface CountryData {
   color: string
 }
 
+interface GeographyAnalysisProps {
+  apiKeyId: string
+}
+
 /**
- * 📊 GeographyAnalysis (통합형)
+ * 📊 GeographyAnalysis (API 키 기반)
  * - Supabase의 country_threats 테이블과 연결
  * - 국가별 위협 데이터 시각화 (막대그래프 + 상세표)
  */
-export default function GeographyAnalysis() {
+export default function GeographyAnalysis({ apiKeyId }: GeographyAnalysisProps) {
   const [data, setData] = useState<CountryData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -47,33 +50,12 @@ export default function GeographyAnalysis() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 
-  // ✅ 현재 로그인 유저의 API 키 id 가져오기
-  const getUserApiKeyId = async (): Promise<number | null> => {
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-    if (userError || !user) return null
-
-    const { data, error } = await supabase
-      .from("api_keys")
-      .select("id")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single()
-
-    if (error) return null
-    return data?.id ?? null
-  }
-
-  // ✅ 국가별 위협 데이터 불러오기
+  // ✅ 특정 API 키의 국가별 위협 데이터 불러오기
   useEffect(() => {
     const loadData = async () => {
       try {
-        const apiKeyId = await getUserApiKeyId()
         if (!apiKeyId) {
-          setError("API 키를 찾을 수 없습니다.")
+          setError("API 키가 제공되지 않았습니다.")
           return
         }
 
@@ -90,18 +72,10 @@ export default function GeographyAnalysis() {
           return
         }
 
-        // ✅ 색상 자동 지정
+        // 🎨 색상 팔레트 자동 매핑
         const palette = [
-          "#ef4444",
-          "#f97316",
-          "#eab308",
-          "#22c55e",
-          "#3b82f6",
-          "#6366f1",
-          "#a855f7",
-          "#ec4899",
-          "#14b8a6",
-          "#f59e0b",
+          "#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6",
+          "#6366f1", "#a855f7", "#ec4899", "#14b8a6", "#f59e0b",
         ]
 
         const mapped = data.map((item, i) => ({
@@ -122,13 +96,12 @@ export default function GeographyAnalysis() {
     }
 
     loadData()
-  }, [])
+  }, [apiKeyId])
 
   if (loading) return <div>📡 지역 데이터 불러오는 중...</div>
   if (error) return <div>⚠️ {error}</div>
   if (!data.length) return <div>🚫 국가별 데이터가 없습니다.</div>
 
-  // ✅ 총합 계산 (표 하단 통계용)
   const totalThreats = data.reduce((sum, d) => sum + d.threats, 0)
 
   return (

@@ -34,7 +34,7 @@ export default function HeroSection() {
           <span className="text-primary">지능형 보안 시스템</span>
         </h1>
         <p className="text-xl text-muted-foreground text-balance mb-8 max-w-2xl mx-auto">
-          AI를 활용한 실시간 네트워크 공격 감지, DDoS 방어, 외국 IP 차단으로 웹사이트를 안전하게 보호하세요.
+          AI를 활용한 실시간 네트워크 공격을 감지하고 위험 IP 확인으로 컴퓨터를 안전하게 보호하세요.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button size="lg" asChild>
