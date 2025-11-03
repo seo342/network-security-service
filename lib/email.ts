@@ -2,7 +2,7 @@ import nodemailer from "nodemailer"
 import { format } from "date-fns"
 
 // ======================================================
-// ✅ SMTP 기반 즉시 위협 알림 메일 (Resend 제거 버전)
+// ✅ SMTP 기반 즉시 위협 알림 메일 (수정 버전)
 // ======================================================
 export async function sendImmediateAlertEmail(incident: any, userEmail: string) {
   try {
@@ -25,19 +25,51 @@ export async function sendImmediateAlertEmail(incident: any, userEmail: string) 
     await transporter.verify()
     console.log("✅ [SMTP] Transporter verified successfully")
 
+    // ------------------------------------------------------
+    // 📩 이메일 내용 구성
+    // ------------------------------------------------------
     const to = [userEmail]
-    const subject = `[⚠️ 위협 감지] ${incident.detection_result} (${incident.source_ip} → ${incident.destination_ip})`
+    const category =
+      incident.category || "미분류"
+    const subject = `[⚠️ 보안 경고] ${category} 관련 이벤트 감지됨`
 
+    // ✅ core_metrics 표시용
+    const metrics = incident?.key_features_evidence?.core_metrics || {}
+    const metricHtml = `
+      <ul>
+        <li>플로우 개수: ${metrics.flow_count ?? "-"}</li>
+        <li>패킷 총합: ${metrics.packet_count_sum ?? "-"}</li>
+        <li>바이트 총합: ${metrics.byte_count_sum ?? "-"}</li>
+        <li>플로우 시작률: ${metrics.flow_start_rate ?? "-"}</li>
+        <li>출발지 IP 다양성: ${metrics.src_ip_nunique ?? "-"}</li>
+        <li>목적지 IP 다양성: ${metrics.dst_ip_nunique ?? "-"}</li>
+        <li>목적지 포트 다양성: ${metrics.dst_port_nunique ?? "-"}</li>
+      </ul>
+    `
+
+    // ✅ 관리자 대시보드 링크 (환경변수 또는 기본값)
+    const dashboardUrl =
+      process.env.DASHBOARD_URL || "https://network-security-service-ma6i.vercel.app"
+
+    // ✅ 이메일 본문
     const html = `
-      <h2>🚨 보안 위협이 감지되었습니다</h2>
+      <h2>🚨 보안 이벤트가 감지되었습니다</h2>
       <p><strong>탐지 결과:</strong> ${incident.detection_result}</p>
-      <p><strong>심각도:</strong> ${incident.severity}</p>
+      <p><strong>카테고리:</strong> ${category}</p>
       <p><strong>신뢰도(Confidence):</strong> ${incident.confidence}</p>
-      <p><strong>발생 시각:</strong> ${format(new Date(incident.time || new Date()), "yyyy-MM-dd HH:mm:ss")}</p>
-      <p><strong>출발지:</strong> ${incident.source_ip}</p>
-      <p><strong>목적지:</strong> ${incident.destination_ip}:${incident.destination_port}</p>
+      <p><strong>발생 시각:</strong> ${format(
+        new Date(incident.time || new Date()),
+        "yyyy-MM-dd HH:mm:ss"
+      )}</p>
+
+      <h4>📊 주요 탐지 지표</h4>
+      ${metricHtml}
+
       <hr/>
-      <p>📊 관리자 대시보드에서 상세 내역을 확인하세요.</p>
+      <p>
+        🔗 <a href="${dashboardUrl}" target="_blank" rel="noopener noreferrer">
+        관리자 대시보드</a>에서 상세 내역을 확인하세요.
+      </p>
     `
 
     // ✅ 이메일 전송

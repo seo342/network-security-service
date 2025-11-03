@@ -74,18 +74,21 @@ export default function IncidentList({ apiKeyId }: IncidentListProps) {
 
         console.log("[IncidentList] 데이터 로드 중...")
 
+        // ✅ details → key_features_evidence 로 변경
         const { data, error } = await supabase
           .from("incidents")
-          .select("id, time, detection_result, source_ip, country, status, details")
+          .select("id, time, detection_result, source_ip, country, status, key_features_evidence")
           .eq("api_key_id", Number(apiKeyId))
           .order("time", { ascending: false })
           .limit(50)
 
         if (error) throw error
 
+        // ✅ key_features_evidence → details 로 매핑
         const mappedData = (data || []).map((item) => ({
           ...item,
           category: categoryMap[item.detection_result] || "기타",
+          details: item.key_features_evidence, // ✅ 핵심 수정
         }))
 
         setIncidents(mappedData)
@@ -114,7 +117,6 @@ export default function IncidentList({ apiKeyId }: IncidentListProps) {
       setFilteredIncidents(filtered)
       console.log(`[IncidentList] 필터: ${categoryFilter}`)
     }
-    console.table(incidents)
   }, [categoryFilter, incidents])
 
   // ✅ 카테고리 색상 지정
@@ -124,8 +126,6 @@ export default function IncidentList({ apiKeyId }: IncidentListProps) {
         return "destructive"
       case "정찰":
         return "secondary"
-      case "슬로우 공격":
-      case "정상":
       default:
         return "default"
     }
@@ -236,7 +236,7 @@ export default function IncidentList({ apiKeyId }: IncidentListProps) {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">출발지 IP:</span>
-                    <div className="font-mono">{incident.source_ip}</div>
+                    <div className="font-mono">{incident.source_ip || "알 수 없음"}</div>
                   </div>
                   <div>
                     <span className="text-muted-foreground">국가:</span>
@@ -273,6 +273,7 @@ export default function IncidentList({ apiKeyId }: IncidentListProps) {
                   </Button>
                 </div>
 
+                {/* ✅ 상세 보기 섹션 */}
                 {expanded === incident.id && incident.details && (
                   <div className="mt-4 p-3 border-t border-border/50 bg-muted/10 rounded-lg space-y-4 text-sm">
                     {incident.details.core_metrics && (
