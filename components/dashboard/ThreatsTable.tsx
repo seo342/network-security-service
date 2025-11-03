@@ -23,6 +23,22 @@ export default function ThreatIpAnalysis({ apiKeyId }: { apiKeyId: string }) {
   const [threatList, setThreatList] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [mapLoaded, setMapLoaded] = useState(false)
+  const [apiKeyName, setApiKeyName] = useState<string>("") // ✅ API 키 이름 상태
+
+  // ✅ API 키 이름 조회
+  useEffect(() => {
+    const fetchApiKeyName = async () => {
+      if (!apiKeyId) return
+      const { data, error } = await supabase
+        .from("api_keys")
+        .select("name")
+        .eq("id", apiKeyId)
+        .maybeSingle()
+
+      if (!error && data) setApiKeyName(data.name)
+    }
+    fetchApiKeyName()
+  }, [apiKeyId])
 
   // ✅ Google Maps 스크립트 로드
   useEffect(() => {
@@ -41,13 +57,12 @@ export default function ThreatIpAnalysis({ apiKeyId }: { apiKeyId: string }) {
     }
 
     document.head.appendChild(script)
-
     return () => {
       document.head.removeChild(script)
     }
   }, [])
 
-  // ✅ IP 정보 조회 (ipwho.is를 HTTPS로 사용)
+  // ✅ IP 정보 조회
   const fetchIpInfo = async () => {
     if (!queryIp) return
     setLoading(true)
@@ -66,7 +81,7 @@ export default function ThreatIpAnalysis({ apiKeyId }: { apiKeyId: string }) {
         lat: data.latitude,
         lon: data.longitude,
         query: data.ip,
-        regionName:data.region,
+        regionName: data.region,
       })
     } catch (err) {
       console.error(err)
@@ -111,7 +126,7 @@ export default function ThreatIpAnalysis({ apiKeyId }: { apiKeyId: string }) {
     })
 
     const infoWindow = new google.maps.InfoWindow({
-      content: `<div style="font-size:13px">
+      content: `<div style="font-size:14px; line-height:1.5">
         <b>${ipInfo.query}</b><br>${ipInfo.city || ""}, ${ipInfo.country}<br>${ipInfo.isp || ""}
       </div>`,
     })
@@ -122,78 +137,92 @@ export default function ThreatIpAnalysis({ apiKeyId }: { apiKeyId: string }) {
   return (
     <Card className="p-4 space-y-4">
       <CardHeader>
-        <CardTitle>위협 IP 분석 (Google Maps)</CardTitle>
+        <CardTitle className="text-xl font-bold">위협 IP 분석 (Google Maps)</CardTitle>
       </CardHeader>
+
       <CardContent>
         {/* 🔹 IP 입력 */}
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-6">
           <Input
             placeholder="조회할 IP 주소 입력"
             value={queryIp}
             onChange={(e) => setQueryIp(e.target.value)}
+            className="text-lg p-3"
           />
-          <Button onClick={fetchIpInfo} disabled={loading}>
+          <Button onClick={fetchIpInfo} disabled={loading} className="text-lg px-6">
             {loading ? "조회 중..." : "조회"}
           </Button>
         </div>
 
-        {/* 🔹 IP 정보 + 지도 */}
-        {/* 🔹 IP 정보 + 지도 */}
-          {ipInfo && (
-            <div className="grid md:grid-cols-2 gap-6 mb-6">
-              {/* 왼쪽: IP 상세 정보 */}
-              <div className="text-sm space-y-4">
-                {/* 위치 정보 */}
-                <div className="border p-3 rounded-lg bg-muted/30">
-                  <h4 className="font-semibold mb-2">🌍 위치 정보</h4>
+        {ipInfo && (
+          <div className="grid md:grid-cols-2 gap-6 mb-6">
+            {/* 왼쪽: IP 상세 정보 */}
+            <div className="space-y-5 leading-relaxed">
+              {/* 🌍 위치 정보 */}
+              <div className="border p-4 rounded-lg bg-muted/20 shadow-sm">
+                <h4 className="font-semibold mb-2 text-xl">🌍 위치 정보</h4>
+                <div className="text-lg space-y-1.5">
                   <p><b>국가:</b> {ipInfo.country || "Unknown"}</p>
                   <p><b>도시:</b> {ipInfo.city || "Unknown"}</p>
                   <p><b>지역:</b> {ipInfo.regionName || "Unknown"}</p>
                   <p><b>위도:</b> {ipInfo.lat}</p>
                   <p><b>경도:</b> {ipInfo.lon}</p>
                 </div>
+              </div>
 
-                {/* 네트워크 정보 */}
-                <div className="border p-3 rounded-lg bg-muted/30">
-                  <h4 className="font-semibold mb-2">🏢 네트워크 정보</h4>
+              {/* 🏢 네트워크 정보 */}
+              <div className="border p-4 rounded-lg bg-muted/20 shadow-sm">
+                <h4 className="font-semibold mb-2 text-xl">🏢 네트워크 정보</h4>
+                <div className="text-lg space-y-1.5">
                   <p><b>ISP:</b> {ipInfo.isp || "Unknown"}</p>
                   <p><b>조직:</b> {ipInfo.org || "Unknown"}</p>
                   <p><b>IP 주소:</b> {ipInfo.query}</p>
                 </div>
               </div>
-
-              {/* 오른쪽: 지도 */}
-              <div id="google-map" className="w-full h-[250px] border rounded-lg" />
             </div>
-          )}
 
+            {/* 오른쪽: 지도 */}
+            <div
+              id="google-map"
+              className="w-full h-[500px] border rounded-xl shadow-md"
+            />
+          </div>
+        )}
 
         {/* 🔹 DB 위협 목록 */}
-        <h3 className="font-semibold mb-2">API 키 {apiKeyId} 기반 수집된 위협 IP 목록</h3>
+        <h3 className="font-semibold mb-3 text-lg">
+          {apiKeyName
+            ? `${apiKeyName} 기반 수집된 위협 IP 목록`
+            : `API 키 ${apiKeyId} 기반 수집된 위협 IP 목록`}
+        </h3>
+
         <div className="overflow-x-auto">
-          <table className="w-full text-sm border">
-            <thead className="bg-muted">
+          <table className="w-full text-sm border rounded-md">
+            <thead className="bg-muted text-left">
               <tr>
-                <th className="p-2 text-left">IP 주소</th>
-                <th className="p-2 text-left">국가</th>
-                <th className="p-2 text-left">위협도</th>
-                <th className="p-2 text-left">탐지 시간</th>
+                <th className="p-3">IP 주소</th>
+                <th className="p-3">국가</th>
+                <th className="p-3">위협도</th>
+                <th className="p-3">탐지 시간</th>
               </tr>
             </thead>
             <tbody>
               {threatList.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="text-center p-4 text-muted-foreground">
+                  <td
+                    colSpan={4}
+                    className="text-center p-5 text-muted-foreground text-base"
+                  >
                     데이터 없음
                   </td>
                 </tr>
               ) : (
                 threatList.map((item) => (
                   <tr key={item.id} className="border-t hover:bg-muted/30">
-                    <td className="p-2">{item.ip_address}</td>
-                    <td className="p-2">{item.country || "Unknown"}</td>
-                    <td className="p-2">{item.threat_level || "알 수 없음"}</td>
-                    <td className="p-2">
+                    <td className="p-3">{item.ip_address}</td>
+                    <td className="p-3">{item.country || "Unknown"}</td>
+                    <td className="p-3">{item.threat_level || "알 수 없음"}</td>
+                    <td className="p-3">
                       {new Date(item.detected_at).toLocaleString()}
                     </td>
                   </tr>
