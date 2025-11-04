@@ -20,9 +20,11 @@ interface TrafficLog {
     packet_count_sum: number | null
     byte_count_sum: number | null
     flow_start_rate: number | null
-    src_ip_nunique: number | null
-    dst_ip_nunique: number | null
     dst_port_nunique: number | null
+  }
+  top_features: {
+    main_protocol: string | null
+    top_dst_port: string | null
   }
 }
 
@@ -43,7 +45,7 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
   const [logs, setLogs] = useState<TrafficLog[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [apiKeyName, setApiKeyName] = useState<string>("") // ✅ API 키 이름 상태
+  const [apiKeyName, setApiKeyName] = useState<string>("")
 
   // ✅ API 키 이름 조회
   useEffect(() => {
@@ -87,7 +89,7 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
           break
       }
 
-      let query = supabase
+      const { data, error } = await supabase
         .from("traffic_logs")
         .select("*")
         .eq("api_key_id", apiKeyId)
@@ -95,7 +97,6 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
         .order("time", { ascending: false })
         .limit(100)
 
-      const { data, error } = await query
       if (error) throw error
 
       const list: TrafficLog[] = (data || []).map((log: any) => {
@@ -103,6 +104,24 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
           log.key_features_evidence?.core_metrics ||
           log.flow_info?.core_metrics ||
           {}
+
+        // ✅ 주요 프로토콜 추출 (TCP, UDP, ICMP 중 ratio가 가장 큰 것)
+        const proto =
+          log.key_features_evidence?.protocol_signals ||
+          log.flow_info?.protocol_signals ||
+          {}
+        const protocolRatios: Record<string, number> = {
+          TCP: proto.tcp_ratio ?? 0,
+          UDP: proto.udp_ratio ?? 0,
+          ICMP: proto.icmp_ratio ?? 0,
+        }
+        const mainProtocol =
+          Object.entries(protocolRatios).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "-"
+
+        // ✅ 주요 도착 포트 (가장 많이 등장한 포트)
+        const portStats = log.flow_info?.top_ports || []
+        const topDstPort = portStats.length > 0 ? portStats[0].port ?? "-" : "-"
+
         return {
           id: log.id ?? Math.random(),
           time: formatTime(log.time),
@@ -113,9 +132,11 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
             packet_count_sum: core.packet_count_sum ?? null,
             byte_count_sum: core.byte_count_sum ?? null,
             flow_start_rate: core.flow_start_rate ?? null,
-            src_ip_nunique: core.src_ip_nunique ?? null,
-            dst_ip_nunique: core.dst_ip_nunique ?? null,
             dst_port_nunique: core.dst_port_nunique ?? null,
+          },
+          top_features: {
+            main_protocol: mainProtocol,
+            top_dst_port: topDstPort,
           },
         }
       })
@@ -130,17 +151,14 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
     }
   }
 
-  // 필터 변경 시 자동 갱신
   useEffect(() => {
     fetchLogs()
   }, [apiKeyId, filters])
 
   return (
     <div className="flex gap-6">
-      {/* 왼쪽: 필터 */}
       <PacketLogFilters filters={filters} setFilters={setFilters} />
 
-      {/* 오른쪽: 로그 카드 */}
       <Card className="flex-1">
         <CardHeader>
           <CardTitle>트래픽 요약</CardTitle>
@@ -162,15 +180,11 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
                   <th className="px-3 py-2 text-center text-xs font-medium">총 패킷 수</th>
                   <th className="px-3 py-2 text-center text-xs font-medium">총 바이트 수</th>
                   <th className="px-3 py-2 text-center text-xs font-medium">초당 플로우 수</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium">출발 IP</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium">도착 IP</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium">주요 도착 포트</th>
                   <th className="px-3 py-2 text-center text-xs font-medium">도착 포트 수</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-red-600">
-                    탐지 결과
-                  </th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-blue-600">
-                    확률(%)
-                  </th>
+                  <th className="px-3 py-2 text-center text-xs font-medium">주요 프로토콜</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-red-600">탐지 결과</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-blue-600">확률(%)</th>
                 </tr>
               </thead>
               <tbody>
@@ -194,32 +208,17 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
                   </tr>
                 ) : (
                   logs.map((log) => (
-                    <tr
-                      key={log.id}
-                      className="border-b hover:bg-muted/30 transition-colors"
-                    >
+                    <tr key={log.id} className="border-b hover:bg-muted/30 transition-colors">
                       <td className="px-3 py-2 font-mono">{log.time}</td>
-                      <td className="px-3 py-2 text-center">
-                        {log.core_metrics.flow_count ?? "-"}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        {log.core_metrics.packet_count_sum ?? "-"}
-                      </td>
+                      <td className="px-3 py-2 text-center">{log.core_metrics.flow_count ?? "-"}</td>
+                      <td className="px-3 py-2 text-center">{log.core_metrics.packet_count_sum ?? "-"}</td>
                       <td className="px-3 py-2 text-center">
                         {log.core_metrics.byte_count_sum?.toLocaleString() ?? "-"}
                       </td>
-                      <td className="px-3 py-2 text-center">
-                        {log.core_metrics.flow_start_rate ?? "-"}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        {log.core_metrics.src_ip_nunique ?? "-"}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        {log.core_metrics.dst_ip_nunique ?? "-"}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        {log.core_metrics.dst_port_nunique ?? "-"}
-                      </td>
+                      <td className="px-3 py-2 text-center">{log.core_metrics.flow_start_rate ?? "-"}</td>
+                      <td className="px-3 py-2 text-center">{log.top_features.top_dst_port ?? "-"}</td>
+                      <td className="px-3 py-2 text-center">{log.core_metrics.dst_port_nunique ?? "-"}</td>
+                      <td className="px-3 py-2 text-center">{log.top_features.main_protocol ?? "-"}</td>
                       <td
                         className={`px-3 py-2 text-center font-semibold ${
                           log.detection_result?.toUpperCase() === "BENIGN"
@@ -230,9 +229,7 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
                         {log.detection_result || "-"}
                       </td>
                       <td className="px-3 py-2 text-center">
-                        {log.confidence != null
-                          ? (log.confidence * 100).toFixed(2) + "%"
-                          : "-"}
+                        {log.confidence != null ? (log.confidence * 100).toFixed(2) + "%" : "-"}
                       </td>
                     </tr>
                   ))

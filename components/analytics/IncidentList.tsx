@@ -10,14 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 interface IncidentDetails {
   core_metrics?: Record<string, number>
-  protocol_signals?: {
-    syn_flag_ratio: number
-    tcp_ratio: number
-    udp_ratio: number
-    icmp_ratio: number
-    fwd_bwd_pkt_ratio: number
-    amplification_ports_hits: Record<string, number>
-  }
+  protocol_signals?: Record<string, any>
   source_analysis?: Record<string, number>
   all_probabilities?: Record<string, number>
 }
@@ -26,8 +19,6 @@ interface Incident {
   id: number
   time: string
   detection_result: string
-  source_ip: string
-  country: string
   category: string
   status: string
   details?: IncidentDetails
@@ -72,30 +63,23 @@ export default function IncidentList({ apiKeyId }: IncidentListProps) {
           return
         }
 
-        console.log("[IncidentList] 데이터 로드 중...")
-
-        // ✅ details → key_features_evidence 로 변경
         const { data, error } = await supabase
           .from("incidents")
-          .select("id, time, detection_result, source_ip, country, status, key_features_evidence")
+          .select("id, time, detection_result, status, key_features_evidence")
           .eq("api_key_id", Number(apiKeyId))
           .order("time", { ascending: false })
           .limit(50)
 
         if (error) throw error
 
-        // ✅ key_features_evidence → details 로 매핑
         const mappedData = (data || []).map((item) => ({
           ...item,
           category: categoryMap[item.detection_result] || "기타",
-          details: item.key_features_evidence, // ✅ 핵심 수정
+          details: item.key_features_evidence,
         }))
 
         setIncidents(mappedData)
         setFilteredIncidents(mappedData)
-
-        console.log("[IncidentList] 불러온 데이터:")
-        console.table(mappedData)
       } catch (err: any) {
         console.error("incidents fetch 실패:", err.message)
         setError("데이터를 불러오지 못했습니다.")
@@ -111,11 +95,9 @@ export default function IncidentList({ apiKeyId }: IncidentListProps) {
   useEffect(() => {
     if (categoryFilter === "전체") {
       setFilteredIncidents(incidents)
-      console.log("[IncidentList] 필터: 전체")
     } else {
       const filtered = incidents.filter((i) => i.category === categoryFilter)
       setFilteredIncidents(filtered)
-      console.log(`[IncidentList] 필터: ${categoryFilter}`)
     }
   }, [categoryFilter, incidents])
 
@@ -131,18 +113,75 @@ export default function IncidentList({ apiKeyId }: IncidentListProps) {
     }
   }
 
-  // ✅ PDF 내보내기 (현재 필터 상태)
+  // ✅ PDF 내보내기 (전체 세부정보 포함 + 키 이름 표시 + 한글화)
   const exportToPDF = async () => {
     try {
       setExporting(true)
       console.log(`[IncidentList] PDF 내보내기 시작 (${categoryFilter})`)
-      console.log(filteredIncidents)
 
+      // 🔹 Supabase에서 API 키 이름 조회
+      const { data: apiKeyData } = await supabase
+        .from("api_keys")
+        .select("name")
+        .eq("id", apiKeyId)
+        .maybeSingle()
+
+      const apiKeyName = apiKeyData?.name || `API_KEY_${apiKeyId}`
+
+      // 🔹 한글화된 필드 매핑 함수
+      const translateKeys = (obj: any): any => {
+        if (!obj || typeof obj !== "object") return obj
+        const map: Record<string, string> = {
+          flow_count: "플로우 개수",
+          packet_count_sum: "패킷 총합",
+          byte_count_sum: "바이트 총합",
+          flow_start_rate: "플로우 시작률",
+          src_ip_nunique: "출발지 IP 다양성",
+          dst_ip_nunique: "목적지 IP 다양성",
+          dst_port_nunique: "목적지 포트 다양성",
+          syn_flag_ratio: "SYN 플래그 비율",
+          tcp_ratio: "TCP 비율",
+          udp_ratio: "UDP 비율",
+          icmp_ratio: "ICMP 비율",
+          fwd_bwd_pkt_ratio: "패킷 방향 비율(F/B)",
+          amplification_ports_hits: "증폭 포트 감지 횟수",
+          top_src_count: "상위 출발지 수",
+          top_dst_port_1: "주요 목적지 포트",
+          top_dst_port_1_hits: "해당 포트 트래픽 수",
+          src_ip_entropy: "출발지 IP 엔트로피",
+          src_proto_bitmask_nunique: "프로토콜 다양성(Bitmask)",
+          src_proto_multi_protocol_fraction: "멀티 프로토콜 비율",
+        }
+
+        const newObj: Record<string, any> = {}
+        for (const [key, value] of Object.entries(obj)) {
+          const translatedKey = map[key] || key
+          if (typeof value === "object" && value !== null)
+            newObj[translatedKey] = translateKeys(value)
+          else newObj[translatedKey] = value
+        }
+        return newObj
+      }
+
+      // 🔹 변환된 incidents 데이터 생성
+      const translatedData = filteredIncidents.map((item) => ({
+        "API 키 이름": apiKeyName,
+        "탐지 결과": item.detection_result,
+        "카테고리": item.category,
+        "상태": item.status,
+        "탐지 시각": new Date(item.time).toLocaleString("ko-KR"),
+        "핵심 지표 (Core Metrics)": translateKeys(item.details?.core_metrics || {}),
+        "프로토콜 신호 (Protocol Signals)": translateKeys(item.details?.protocol_signals || {}),
+        "소스 분석 (Source Analysis)": translateKeys(item.details?.source_analysis || {}),
+        "탐지 확률 (All Probabilities)": translateKeys(item.details?.all_probabilities || {}),
+      }))
+
+      // 🔹 PDF 생성 요청
       const payload = {
         format: "pdf",
-        api_key_id: apiKeyId,
+        api_key_name: apiKeyName, // ✅ 키 이름으로 전달
         category: categoryFilter,
-        data: filteredIncidents,
+        data: translatedData,
       }
 
       const res = await fetch("/dashboard/reports", {
@@ -157,7 +196,7 @@ export default function IncidentList({ apiKeyId }: IncidentListProps) {
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
-      link.download = `incident_report_${categoryFilter}.pdf`
+      link.download = `보안사고_${apiKeyName}_${categoryFilter}.pdf`
       link.click()
 
       console.log(`[IncidentList] PDF 리포트 (${categoryFilter}) 생성 완료`)
@@ -233,31 +272,13 @@ export default function IncidentList({ apiKeyId }: IncidentListProps) {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">출발지 IP:</span>
-                    <div className="font-mono">{incident.source_ip || "알 수 없음"}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">국가:</span>
-                    <div>{incident.country || "알 수 없음"}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">상태:</span>
-                    <div>{incident.status}</div>
-                  </div>
-                </div>
-
-                <div className="mt-3">
+                <div className="mt-2">
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => {
                       const next = expanded === incident.id ? null : incident.id
                       setExpanded(next)
-                      if (next)
-                        console.log("[IncidentList] 상세 보기 열림:", incident.id, incident.details)
-                      else console.log("[IncidentList] 상세 보기 닫힘:", incident.id)
                     }}
                     className="flex items-center text-sm text-blue-600"
                   >
@@ -273,12 +294,11 @@ export default function IncidentList({ apiKeyId }: IncidentListProps) {
                   </Button>
                 </div>
 
-                {/* ✅ 상세 보기 섹션 */}
                 {expanded === incident.id && incident.details && (
-                  <div className="mt-4 p-3 border-t border-border/50 bg-muted/10 rounded-lg space-y-4 text-sm">
+                  <div className="mt-4 p-4 border-t border-border/50 bg-muted/10 rounded-lg space-y-4 text-sm">
                     {incident.details.core_metrics && (
                       <div>
-                        <h4 className="font-semibold mb-1">핵심 지표 (Core Metrics)</h4>
+                        <h4 className="font-semibold mb-1">① 핵심 지표 (Core Metrics)</h4>
                         <ul className="list-disc list-inside space-y-1">
                           <li>플로우 개수: {incident.details.core_metrics.flow_count}</li>
                           <li>패킷 총합: {incident.details.core_metrics.packet_count_sum}</li>
@@ -287,6 +307,42 @@ export default function IncidentList({ apiKeyId }: IncidentListProps) {
                           <li>출발지 IP 다양성: {incident.details.core_metrics.src_ip_nunique}</li>
                           <li>목적지 IP 다양성: {incident.details.core_metrics.dst_ip_nunique}</li>
                           <li>목적지 포트 다양성: {incident.details.core_metrics.dst_port_nunique}</li>
+                        </ul>
+                      </div>
+                    )}
+
+                    {incident.details.protocol_signals && (
+                      <div>
+                        <h4 className="font-semibold mb-1">② 프로토콜 신호 (Protocol Signals)</h4>
+                        <ul className="list-disc list-inside space-y-1">
+                          <li>SYN 플래그 비율: {incident.details.protocol_signals.syn_flag_ratio}</li>
+                          <li>TCP 비율: {incident.details.protocol_signals.tcp_ratio}</li>
+                          <li>UDP 비율: {incident.details.protocol_signals.udp_ratio}</li>
+                          <li>ICMP 비율: {incident.details.protocol_signals.icmp_ratio}</li>
+                          <li>패킷 방향 비율(F/B): {incident.details.protocol_signals.fwd_bwd_pkt_ratio}</li>
+                          <li>
+                            증폭 포트 감지:{" "}
+                            {Object.entries(
+                              incident.details.protocol_signals.amplification_ports_hits || {}
+                            )
+                              .filter(([_, v]) => (v as number)> 0)
+                              .map(([k, v]) => `${k}: ${v}`)
+                              .join(", ") || "없음"}
+                          </li>
+                        </ul>
+                      </div>
+                    )}
+
+                    {incident.details.source_analysis && (
+                      <div>
+                        <h4 className="font-semibold mb-1">③ 소스 분석 (Source Analysis)</h4>
+                        <ul className="list-disc list-inside space-y-1">
+                          <li>상위 출발지 수: {incident.details.source_analysis.top_src_count}</li>
+                          <li>주요 목적지 포트: {incident.details.source_analysis.top_dst_port_1}</li>
+                          <li>해당 포트 트래픽 수: {incident.details.source_analysis.top_dst_port_1_hits}</li>
+                          <li>출발지 IP 엔트로피: {incident.details.source_analysis.src_ip_entropy}</li>
+                          <li>프로토콜 다양성(Bitmask): {incident.details.source_analysis.src_proto_bitmask_nunique}</li>
+                          <li>멀티 프로토콜 비율: {incident.details.source_analysis.src_proto_multi_protocol_fraction}</li>
                         </ul>
                       </div>
                     )}
