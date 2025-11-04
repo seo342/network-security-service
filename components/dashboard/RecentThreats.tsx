@@ -21,8 +21,6 @@ interface ThreatItem {
 }
 
 const LABEL_CATEGORY_MAP: Record<string, string> = {
-  BENIGN: "정상",
-
   // 디도스
   ICMP_FLOOD: "디도스",
   OTHER_TCP_FLOOD: "디도스",
@@ -38,7 +36,6 @@ const LABEL_CATEGORY_MAP: Record<string, string> = {
 }
 
 const CATEGORY_EMOJI: Record<string, string> = {
-  정상: "✅",
   디도스: "💥",
   정찰: "🔎",
   "슬로우 공격": "🐢",
