@@ -21,6 +21,7 @@ interface ThreatItem {
 }
 
 const LABEL_CATEGORY_MAP: Record<string, string> = {
+  BENIGN: "정상",
   // 디도스
   ICMP_FLOOD: "디도스",
   OTHER_TCP_FLOOD: "디도스",
@@ -110,7 +111,8 @@ export default function RecentThreats({ apiKeyName }: { apiKeyName: string }) {
         }
       })
 
-      setThreats(mapped)
+      //정상 카테고리 넘김
+      setThreats(mapped.filter(t=>t.category!=="정상"))
       setError(null)
     } catch (err: any) {
       console.error("🚨 RecentThreats fetch 실패:", err.message)

@@ -37,13 +37,13 @@ export async function sendImmediateAlertEmail(incident: any, userEmail: string) 
     const metrics = incident?.key_features_evidence?.core_metrics || {}
     const metricHtml = `
       <ul>
-        <li>플로우 개수: ${metrics.flow_count ?? "-"}</li>
+        <li>총 플로우 수: ${metrics.flow_count ?? "-"}</li>
         <li>패킷 총합: ${metrics.packet_count_sum ?? "-"}</li>
         <li>바이트 총합: ${metrics.byte_count_sum ?? "-"}</li>
-        <li>플로우 시작률: ${metrics.flow_start_rate ?? "-"}</li>
-        <li>출발지 IP 다양성: ${metrics.src_ip_nunique ?? "-"}</li>
-        <li>목적지 IP 다양성: ${metrics.dst_ip_nunique ?? "-"}</li>
-        <li>목적지 포트 다양성: ${metrics.dst_port_nunique ?? "-"}</li>
+        <li>초당 플로우 수: ${metrics.flow_start_rate ?? "-"}</li>
+        <li>출발지 IP 수: ${metrics.src_ip_nunique ?? "-"}</li>
+        <li>도착지 IP 수: ${metrics.dst_ip_nunique ?? "-"}</li>
+        <li>목적지 포트 수: ${metrics.dst_port_nunique ?? "-"}</li>
       </ul>
     `
 
