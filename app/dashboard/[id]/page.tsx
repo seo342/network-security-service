@@ -113,11 +113,10 @@ export default function DashboardPage() {
 
         {/* 메인 탭 */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">개요</TabsTrigger>
             <TabsTrigger value="logs">트래픽 요약</TabsTrigger>
             <TabsTrigger value="threats">위협 분석</TabsTrigger>
-            <TabsTrigger value="blocked">차단된 IP</TabsTrigger>
             <TabsTrigger value="analytics">분석</TabsTrigger>
             <TabsTrigger value="settings">설정</TabsTrigger>
           </TabsList>
@@ -140,11 +139,6 @@ export default function DashboardPage() {
           {/* 🚨 위협 분석 탭 */}
           <TabsContent value="threats">
             <ThreatTable apiKeyId={id} />
-          </TabsContent>
-
-          {/* 🚫 차단된 IP 탭 */}
-          <TabsContent value="blocked">
-            <BlockedIPs apiKeyId={id} blockedIPs={mockBlockedIPs} />
           </TabsContent>
 
           {/* 📈 분석 탭 */}

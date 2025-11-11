@@ -11,19 +11,12 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-declare global {
-  interface Window {
-    initGoogleMap: any
-  }
-}
-
 export default function ThreatIpAnalysis({ apiKeyId }: { apiKeyId: string }) {
   const [queryIp, setQueryIp] = useState("")
   const [ipInfo, setIpInfo] = useState<any>(null)
   const [threatList, setThreatList] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [mapLoaded, setMapLoaded] = useState(false)
-  const [apiKeyName, setApiKeyName] = useState<string>("") // ✅ API 키 이름 상태
+  const [apiKeyName, setApiKeyName] = useState<string>("")
 
   // ✅ API 키 이름 조회
   useEffect(() => {
@@ -40,27 +33,22 @@ export default function ThreatIpAnalysis({ apiKeyId }: { apiKeyId: string }) {
     fetchApiKeyName()
   }, [apiKeyId])
 
-  // ✅ Google Maps 스크립트 로드
+  // ✅ Supabase에서 위협 IP 목록 불러오기
+  const loadThreatList = async () => {
+    if (!apiKeyId) return
+    const { data, error } = await supabase
+      .from("threat_ips")
+      .select("*")
+      .eq("api_key_id", apiKeyId)
+      .order("detected_at", { ascending: false })
+      .limit(30)
+
+    if (!error && data) setThreatList(data)
+  }
+
   useEffect(() => {
-    if (window.google && window.google.maps) {
-      setMapLoaded(true)
-      return
-    }
-
-    const script = document.createElement("script")
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}&callback=initGoogleMap`
-    script.async = true
-
-    window.initGoogleMap = () => {
-      console.log("✅ Google Maps SDK loaded")
-      setMapLoaded(true)
-    }
-
-    document.head.appendChild(script)
-    return () => {
-      document.head.removeChild(script)
-    }
-  }, [])
+    loadThreatList()
+  }, [apiKeyId])
 
   // ✅ IP 정보 조회
   const fetchIpInfo = async () => {
@@ -90,54 +78,19 @@ export default function ThreatIpAnalysis({ apiKeyId }: { apiKeyId: string }) {
     }
   }
 
-  // ✅ Supabase에서 위협 IP 목록 불러오기
-  const loadThreatList = async () => {
-    if (!apiKeyId) return
-    const { data, error } = await supabase
-      .from("threat_ips")
-      .select("*")
-      .eq("api_key_id", apiKeyId)
-      .order("detected_at", { ascending: false })
-      .limit(30)
-    if (!error && data) setThreatList(data)
+  // ✅ ai_features 내부의 events 안전 추출
+  const getEventList = (item: any) => {
+    if (!item?.ai_features) return []
+    if (Array.isArray(item.ai_features.events)) return item.ai_features.events
+    return []
   }
-
-  useEffect(() => {
-    loadThreatList()
-  }, [apiKeyId])
-
-  // ✅ Google Map 렌더링
-  useEffect(() => {
-    if (!mapLoaded || !ipInfo?.lat || !ipInfo?.lon) return
-
-    const mapContainer = document.getElementById("google-map") as HTMLElement
-    if (!mapContainer) return
-
-    const position = { lat: ipInfo.lat, lng: ipInfo.lon }
-    const map = new google.maps.Map(mapContainer, {
-      center: position,
-      zoom: 6,
-    })
-
-    const marker = new google.maps.Marker({
-      position,
-      map,
-      title: ipInfo.query,
-    })
-
-    const infoWindow = new google.maps.InfoWindow({
-      content: `<div style="font-size:14px; line-height:1.5">
-        <b>${ipInfo.query}</b><br>${ipInfo.city || ""}, ${ipInfo.country}<br>${ipInfo.isp || ""}
-      </div>`,
-    })
-
-    marker.addListener("click", () => infoWindow.open(map, marker))
-  }, [mapLoaded, ipInfo])
 
   return (
     <Card className="p-4 space-y-4">
       <CardHeader>
-        <CardTitle className="text-xl font-bold">위협 IP 분석 (Google Maps)</CardTitle>
+        <CardTitle className="text-xl font-bold">
+          위협 IP 분석 (히트 수 & 시간)
+        </CardTitle>
       </CardHeader>
 
       <CardContent>
@@ -154,83 +107,58 @@ export default function ThreatIpAnalysis({ apiKeyId }: { apiKeyId: string }) {
           </Button>
         </div>
 
-        {ipInfo && (
-          <div className="grid md:grid-cols-2 gap-6 mb-6">
-            {/* 왼쪽: IP 상세 정보 */}
-            <div className="space-y-5 leading-relaxed">
-              {/* 🌍 위치 정보 */}
-              <div className="border p-4 rounded-lg bg-muted/20 shadow-sm">
-                <h4 className="font-semibold mb-2 text-xl">🌍 위치 정보</h4>
-                <div className="text-lg space-y-1.5">
-                  <p><b>국가:</b> {ipInfo.country || "Unknown"}</p>
-                  <p><b>도시:</b> {ipInfo.city || "Unknown"}</p>
-                  <p><b>지역:</b> {ipInfo.regionName || "Unknown"}</p>
-                  <p><b>위도:</b> {ipInfo.lat}</p>
-                  <p><b>경도:</b> {ipInfo.lon}</p>
-                </div>
-              </div>
-
-              {/* 🏢 네트워크 정보 */}
-              <div className="border p-4 rounded-lg bg-muted/20 shadow-sm">
-                <h4 className="font-semibold mb-2 text-xl">🏢 네트워크 정보</h4>
-                <div className="text-lg space-y-1.5">
-                  <p><b>ISP:</b> {ipInfo.isp || "Unknown"}</p>
-                  <p><b>조직:</b> {ipInfo.org || "Unknown"}</p>
-                  <p><b>IP 주소:</b> {ipInfo.query}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* 오른쪽: 지도 */}
-            <div
-              id="google-map"
-              className="w-full h-[500px] border rounded-xl shadow-md"
-            />
-          </div>
-        )}
-
-        {/* 🔹 DB 위협 목록 */}
+        {/* 🔹 Supabase DB 위협 목록 */}
         <h3 className="font-semibold mb-3 text-lg">
           {apiKeyName
             ? `${apiKeyName} 기반 수집된 위협 IP 목록`
             : `API 키 ${apiKeyId} 기반 수집된 위협 IP 목록`}
         </h3>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border rounded-md">
-            <thead className="bg-muted text-left">
-              <tr>
-                <th className="p-3">IP 주소</th>
-                <th className="p-3">국가</th>
-                <th className="p-3">위협도</th>
-                <th className="p-3">탐지 시간</th>
-              </tr>
-            </thead>
-            <tbody>
-              {threatList.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={4}
-                    className="text-center p-5 text-muted-foreground text-base"
-                  >
-                    데이터 없음
-                  </td>
-                </tr>
-              ) : (
-                threatList.map((item) => (
-                  <tr key={item.id} className="border-t hover:bg-muted/30">
-                    <td className="p-3">{item.ip_address}</td>
-                    <td className="p-3">{item.country || "Unknown"}</td>
-                    <td className="p-3">{item.threat_level || "알 수 없음"}</td>
-                    <td className="p-3">
-                      {new Date(item.detected_at).toLocaleString()}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {threatList.length === 0 ? (
+          <p className="text-center text-muted-foreground text-base p-5">
+            데이터 없음
+          </p>
+        ) : (
+          <div className="space-y-6">
+            {threatList.map((item) => (
+              <div key={item.id} className="border rounded-lg p-4 bg-muted/10 shadow-sm">
+                <h4 className="font-semibold text-lg mb-2">
+                  {item.ip_address}
+                  <span className="text-sm text-gray-500 ml-2">
+                    ({new Date(item.detected_at).toLocaleString()})
+                  </span>
+                </h4>
+
+                <div className="border-t pt-2 mt-2">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-500">
+                        <th className="py-1">시간</th>
+                        <th className="py-1 text-right">히트 수</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getEventList(item).length === 0 ? (
+                        <tr>
+                          <td colSpan={2} className="text-center py-2 text-muted-foreground">
+                            이벤트 데이터 없음
+                          </td>
+                        </tr>
+                      ) : (
+                        getEventList(item).map((e: any, idx: number) => (
+                          <tr key={idx} className="border-t hover:bg-muted/20">
+                            <td>{new Date(e.time).toLocaleString()}</td>
+                            <td className="text-right">{e.count.toLocaleString()}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   )
