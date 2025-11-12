@@ -51,12 +51,6 @@ export async function POST(req: Request) {
     const threatRows = threat_ip_list.map((item: any) => ({
       api_key_id: apiKey.id,
       ip_address: item.source_ip,
-      country: null,
-      city: null,
-      isp: null,
-      org: null,
-      lat: null,
-      lon: null,
       threat_level:
         item.total_hits > 10000
           ? "high"
