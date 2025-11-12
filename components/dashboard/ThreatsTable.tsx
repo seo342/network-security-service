@@ -86,58 +86,62 @@ export default function ThreatIpAnalysis({ apiKeyId }: { apiKeyId: string }) {
   }
 
   return (
-    <Card className="p-4 space-y-4">
+    <Card className="p-3 space-y-4">
       <CardHeader>
-        <CardTitle className="text-xl font-bold">
+        <CardTitle className="text-xl font-semibold">
           위협 IP 분석 (히트 수 & 시간)
         </CardTitle>
       </CardHeader>
 
       <CardContent>
         {/* 🔹 IP 입력 */}
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-2 mb-5">
           <Input
             placeholder="조회할 IP 주소 입력"
             value={queryIp}
             onChange={(e) => setQueryIp(e.target.value)}
-            className="text-lg p-3"
+            className="text-base p-2"
           />
-          <Button onClick={fetchIpInfo} disabled={loading} className="text-lg px-6">
+          <Button
+            onClick={fetchIpInfo}
+            disabled={loading}
+            className="text-base px-5"
+          >
             {loading ? "조회 중..." : "조회"}
           </Button>
         </div>
 
         {/* 🔹 Supabase DB 위협 목록 */}
-        <h3 className="font-semibold mb-3 text-lg">
+        <h3 className="font-medium mb-2 text-base">
           {apiKeyName
             ? `${apiKeyName} 기반 수집된 위협 IP 목록`
             : `API 키 ${apiKeyId} 기반 수집된 위협 IP 목록`}
         </h3>
 
         {threatList.length === 0 ? (
-          <p className="text-center text-muted-foreground text-base p-5">
+          <p className="text-center text-muted-foreground text-base p-4">
             데이터 없음
           </p>
         ) : (
-          <div className="space-y-10">
+          <div className="space-y-8">
             {threatList.map((item) => (
               <div
                 key={item.id}
-                className="border rounded-2xl p-8 bg-muted/10 shadow-md hover:shadow-lg transition-shadow"
+                className="border rounded-xl p-6 bg-muted/10 shadow-sm hover:shadow-md transition-shadow"
               >
-                <h4 className="font-bold text-2xl mb-4">
+                <h4 className="font-semibold text-xl mb-3">
                   {item.ip_address}
-                  <span className="text-lg text-gray-500 ml-3 font-normal">
+                  <span className="text-sm text-gray-500 ml-2">
                     ({new Date(item.detected_at).toLocaleString()})
                   </span>
                 </h4>
 
-                <div className="border-t pt-4 mt-4">
-                  <table className="w-full text-lg">
+                <div className="border-t pt-3 mt-3">
+                  <table className="w-full text-base">
                     <thead>
                       <tr className="text-left text-gray-500 border-b">
-                        <th className="py-3">시간</th>
-                        <th className="py-3 text-right">히트 수</th>
+                        <th className="py-2">시간</th>
+                        <th className="py-2 text-right">히트 수</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -145,7 +149,7 @@ export default function ThreatIpAnalysis({ apiKeyId }: { apiKeyId: string }) {
                         <tr>
                           <td
                             colSpan={2}
-                            className="text-center py-6 text-muted-foreground text-lg"
+                            className="text-center py-4 text-muted-foreground text-sm"
                           >
                             이벤트 데이터 없음
                           </td>
@@ -156,10 +160,10 @@ export default function ThreatIpAnalysis({ apiKeyId }: { apiKeyId: string }) {
                             key={idx}
                             className="border-t hover:bg-muted/20 transition-colors"
                           >
-                            <td className="py-3">
+                            <td className="py-2 text-sm">
                               {new Date(e.time).toLocaleString()}
                             </td>
-                            <td className="py-3 text-right font-semibold">
+                            <td className="py-2 text-right font-medium text-sm">
                               {e.count.toLocaleString()}
                             </td>
                           </tr>
