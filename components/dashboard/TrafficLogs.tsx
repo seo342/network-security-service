@@ -31,7 +31,9 @@ const formatTime = (timestamp: string) => {
   if (!timestamp) return "-"
   const d = new Date(timestamp)
   const pad = (n: number) => n.toString().padStart(2, "0")
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  const datestr=`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  return `${datestr} ${timeStr}`
 }
 
 // ✅ JSON 내부에서 주요 프로토콜 계산
@@ -241,7 +243,7 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr className="border-b">
-                  <th className="px-3 py-2 text-left text-xs font-medium">시간</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium">날짜</th>
                   <th className="px-3 py-2 text-center text-xs font-medium">프로토콜</th>
                   <th className="px-3 py-2 text-center text-xs font-medium">총 플로우 수</th>
                   <th className="px-3 py-2 text-center text-xs font-medium">총 패킷 수</th>
@@ -249,7 +251,7 @@ export default function PacketLogDashboard({ apiKeyId }: { apiKeyId: string }) {
                   <th className="px-3 py-2 text-center text-xs font-medium">초당 플로우 수</th>
                   <th className="px-3 py-2 text-center text-xs font-medium">도착 포트</th>
                   <th className="px-3 py-2 text-center text-xs font-medium text-red-600">탐지 결과</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-blue-600">확률(%)</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-blue-600">신뢰도(%)</th>
                 </tr>
               </thead>
               <tbody>

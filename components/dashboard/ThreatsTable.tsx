@@ -119,36 +119,49 @@ export default function ThreatIpAnalysis({ apiKeyId }: { apiKeyId: string }) {
             데이터 없음
           </p>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-10">
             {threatList.map((item) => (
-              <div key={item.id} className="border rounded-lg p-4 bg-muted/10 shadow-sm">
-                <h4 className="font-semibold text-lg mb-2">
+              <div
+                key={item.id}
+                className="border rounded-2xl p-8 bg-muted/10 shadow-md hover:shadow-lg transition-shadow"
+              >
+                <h4 className="font-bold text-2xl mb-4">
                   {item.ip_address}
-                  <span className="text-sm text-gray-500 ml-2">
+                  <span className="text-lg text-gray-500 ml-3 font-normal">
                     ({new Date(item.detected_at).toLocaleString()})
                   </span>
                 </h4>
 
-                <div className="border-t pt-2 mt-2">
-                  <table className="w-full text-sm">
+                <div className="border-t pt-4 mt-4">
+                  <table className="w-full text-lg">
                     <thead>
-                      <tr className="text-left text-gray-500">
-                        <th className="py-1">시간</th>
-                        <th className="py-1 text-right">히트 수</th>
+                      <tr className="text-left text-gray-500 border-b">
+                        <th className="py-3">시간</th>
+                        <th className="py-3 text-right">히트 수</th>
                       </tr>
                     </thead>
                     <tbody>
                       {getEventList(item).length === 0 ? (
                         <tr>
-                          <td colSpan={2} className="text-center py-2 text-muted-foreground">
+                          <td
+                            colSpan={2}
+                            className="text-center py-6 text-muted-foreground text-lg"
+                          >
                             이벤트 데이터 없음
                           </td>
                         </tr>
                       ) : (
                         getEventList(item).map((e: any, idx: number) => (
-                          <tr key={idx} className="border-t hover:bg-muted/20">
-                            <td>{new Date(e.time).toLocaleString()}</td>
-                            <td className="text-right">{e.count.toLocaleString()}</td>
+                          <tr
+                            key={idx}
+                            className="border-t hover:bg-muted/20 transition-colors"
+                          >
+                            <td className="py-3">
+                              {new Date(e.time).toLocaleString()}
+                            </td>
+                            <td className="py-3 text-right font-semibold">
+                              {e.count.toLocaleString()}
+                            </td>
                           </tr>
                         ))
                       )}
