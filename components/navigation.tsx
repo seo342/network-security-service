@@ -54,6 +54,7 @@ export function Navigation() {
           <Link href={session?"/api-management":"/login"} className="text-sm font-medium hover:text-primary transition-colors">
             API 관리
           </Link>
+          <Link href={session?"/download":"/login"} className="text-sm font-medium hover:text-primary transition-colors">다운로드</Link>
 
           {/* 로그인 여부에 따라 버튼 다르게 표시 */}
           {session ? (
