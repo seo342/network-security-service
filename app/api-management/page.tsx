@@ -3,7 +3,6 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import APIKeyList from "@/components/api/ApiKeyList_temp"
 import ApiDocs from "@/components/api/ApiDocs"
-import ApiUsage from "@/components/api/ApiUsage"
 
 interface ApiKey {
   id: number
@@ -25,21 +24,7 @@ export default function ApiManagementPage() {
         <p className="text-muted-foreground mb-6">
           SecureNet AI API 키를 생성하고 관리하여 웹사이트에 보안 모니터링을 통합하세요.
         </p>
-
-        <Tabs defaultValue="keys" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="keys">API 키</TabsTrigger>
-            <TabsTrigger value="docs">문서</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="keys">
             <APIKeyList />
-          </TabsContent>
-
-          <TabsContent value="docs">
-            <ApiDocs />
-          </TabsContent>
-        </Tabs>
       </div>
     </div>
   )
