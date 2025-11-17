@@ -14,17 +14,12 @@ const supabase = createClient(
 interface Stats {
   totalRequests: number
   threatsDetected: number
-  blockedIPs: number
-  status: string // active | inactive
+  blockedIPs: number // ✅ 실제 threat_ips 테이블의 IP 수
+  status: string
 }
 
 type RangeType = "today" | "7d" | "30d"
 
-/**
- * ✅ API 키 기준 통계 카드 (기간 선택 가능)
- * - traffic_logs.time 기준으로 기간 필터링
- * - api_keys.status로 Active/Inactive 표시
- */
 export default function StatsCards({ apiKeyId }: { apiKeyId: string }) {
   const [stats, setStats] = useState<Stats>({
     totalRequests: 0,
@@ -32,20 +27,49 @@ export default function StatsCards({ apiKeyId }: { apiKeyId: string }) {
     blockedIPs: 0,
     status: "inactive",
   })
-  const [range, setRange] = useState<RangeType>("today") // 🔹 기본값: 오늘
+  const [range, setRange] = useState<RangeType>("today")
 
+  // ✅ 위협 IP 수 계산
+  const fetchThreatIpCount = async () => {
+    try {
+      if (!apiKeyId) return 0
+
+      const start=new Date()
+      if(range==="today") start.setHours(0,0,0,0)
+      if(range==="7d") start.setDate(start.getDate()-7)
+      if(range==="30d") start.setDate(start.getDate()-30)
+      const startString=start.toISOString().replace("T"," ").replace("Z","")
+      const { count, error } = await supabase
+        .from("threat_ips")
+        .select("*", { count: "exact", head: true })
+        .eq("api_key_id", Number(apiKeyId))
+        .gte("detected_at",startString)
+
+      if (error) {
+        console.error("❌ 위협 IP 카운트 실패:", error)
+        return 0
+      }
+
+      return count ?? 0
+    } catch (err) {
+      console.error("❌ 위협 IP fetch 실패:", err)
+      return 0
+    }
+  }
+
+  // ✅ 통계 데이터 계산
   const fetchStats = async () => {
     try {
       if (!apiKeyId) return
 
-      // ✅ 기간 시작 계산
+      // 🔹 기간 계산
       const start = new Date()
       if (range === "today") start.setHours(0, 0, 0, 0)
       if (range === "7d") start.setDate(start.getDate() - 7)
       if (range === "30d") start.setDate(start.getDate() - 30)
       const startString = start.toISOString().replace("T", " ").replace("Z", "")
 
-      // ✅ 1️⃣ traffic_logs 가져오기
+      // 🔹 traffic_logs
       const { data: logs, error: logError } = await supabase
         .from("traffic_logs")
         .select("detection_result, category, flow_info, source_ip, time")
@@ -55,24 +79,16 @@ export default function StatsCards({ apiKeyId }: { apiKeyId: string }) {
       if (logError) throw logError
 
       const totalRequests = logs?.length ?? 0
-
       const threatsDetected =
         logs?.filter((log) => {
           const type = (log.detection_result || log.category || "").toLowerCase()
           return type && !["benign", "normal"].includes(type)
         }).length ?? 0
 
-      const blockedIPs =
-        new Set(
-          logs
-            ?.filter((log) => {
-              const type = (log.detection_result || log.category || "").toLowerCase()
-              return type && !["benign", "normal"].includes(type)
-            })
-            .map((log) => log.flow_info?.src_ip ?? log.source_ip)
-        ).size ?? 0
+      // 🔹 threat_ips 테이블에서 실제 위협 IP 개수 가져오기
+      const threatIpCount = await fetchThreatIpCount()
 
-      // ✅ 2️⃣ api_keys.status 불러오기
+      // 🔹 API Key 상태
       const { data: keyData, error: keyError } = await supabase
         .from("api_keys")
         .select("status")
@@ -80,42 +96,48 @@ export default function StatsCards({ apiKeyId }: { apiKeyId: string }) {
         .maybeSingle()
 
       if (keyError) throw keyError
-      const status = keyData?.status || "inactive"
 
-      setStats({ totalRequests, threatsDetected, blockedIPs, status })
+      setStats({
+        totalRequests,
+        threatsDetected,
+        blockedIPs: threatIpCount,
+        status: keyData?.status || "inactive",
+      })
     } catch (err) {
       console.error("❌ 통계 로드 실패:", err)
     }
   }
 
-  // ✅ 실시간 반영
+  // ✅ 실시간 구독 및 초기 로드
   useEffect(() => {
     fetchStats()
 
+    // 🔹 실시간 traffic_logs 반영
     const logsChannel = supabase
       .channel("realtime:traffic_logs")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "traffic_logs" }, (payload) => {
-        if (payload.new.api_key_id === apiKeyId) fetchStats()
+        if (payload.new.api_key_id === Number(apiKeyId)) fetchStats()
       })
       .subscribe()
 
-    const keysChannel = supabase
-      .channel("realtime:api_keys")
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "api_keys" }, (payload) => {
-        if (payload.new.id === Number(apiKeyId)) fetchStats()
+    // 🔹 실시간 threat_ips 반영
+    const ipsChannel = supabase
+      .channel("realtime:threat_ips")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "threat_ips" }, (payload) => {
+        if (payload.new.api_key_id === Number(apiKeyId)) fetchStats()
       })
       .subscribe()
 
     return () => {
       supabase.removeChannel(logsChannel)
-      supabase.removeChannel(keysChannel)
+      supabase.removeChannel(ipsChannel)
     }
-  }, [apiKeyId, range]) // 🔹 range 바뀔 때마다 새로 fetch
+  }, [apiKeyId, range])
 
   // ✅ UI 렌더링
   return (
-    <div className="space-y-4 mb-8">
-      {/* 기간 선택 */}
+    <div className="space-y-6 mb-8">
+      {/* 🔸 기간 선택 */}
       <div className="flex justify-end">
         <div className="flex items-center gap-2">
           <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -132,7 +154,7 @@ export default function StatsCards({ apiKeyId }: { apiKeyId: string }) {
         </div>
       </div>
 
-      {/* 통계 카드 4개 */}
+      {/* 🔸 통계 카드 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* 요청 수 */}
         <Card>
@@ -174,10 +196,10 @@ export default function StatsCards({ apiKeyId }: { apiKeyId: string }) {
           </CardContent>
         </Card>
 
-        {/* 차단된 IP */}
+        {/* 위협 IP (threat_ips 테이블 기준) */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">차단된 IP</CardTitle>
+            <CardTitle className="text-sm font-medium">위협 IP</CardTitle>
             <Ban className="h-4 w-4 text-accent" />
           </CardHeader>
           <CardContent>
@@ -186,10 +208,10 @@ export default function StatsCards({ apiKeyId }: { apiKeyId: string }) {
             </div>
             <p className="text-xs text-muted-foreground">
               {range === "today"
-                ? "오늘 위협 발생 IP"
+                ? "오늘 탐지된 위협 IP 수"
                 : range === "7d"
-                ? "최근 7일간 위협 IP"
-                : "최근 30일간 위협 IP"}
+                ? "최근 7일간 위협 IP 수"
+                : "최근 30일간 위협 IP 수"}
             </p>
           </CardContent>
         </Card>
