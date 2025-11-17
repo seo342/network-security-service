@@ -14,13 +14,13 @@ import { Download, FileType, FileArchive } from "lucide-react"
 export default function DownloadPage() {
   const [loading, setLoading] = useState<"" | "exe" | "pdf">("")
 
-  const downloadFile = async (type: "exe" | "pdf") => {
-    setLoading(type)
+  const downloadPdf = async () => {
+    setLoading("pdf")
 
-    const res = await fetch(`/download/files?type=${type}`)
+    const res = await fetch(`/download/files?type=pdf`)
 
     if (!res.ok) {
-      alert("❌ 다운로드 실패!")
+      alert("❌ PDF 다운로드 실패!")
       setLoading("")
       return
     }
@@ -30,16 +30,21 @@ export default function DownloadPage() {
 
     const a = document.createElement("a")
     a.href = url
-    a.download = type === "exe" ? "AION Sentinel.exe" : "manual.pdf"
+    a.download = "manual.pdf"
     a.click()
 
-    setLoading("")
     URL.revokeObjectURL(url)
+    setLoading("")
+  }
+
+  // 🔥 EXE는 GitHub Releases redirect
+  const downloadExe = () => {
+    window.location.href =
+      "https://github.com/seo342/network-security-service/releases/download/v1.0.0/AION.Sentinel.exe"
   }
 
   return (
     <div className="space-y-6">
-      {/* 다운로드 설명 카드 */}
       <Card>
         <CardHeader>
           <CardTitle>파일 다운로드</CardTitle>
@@ -49,8 +54,7 @@ export default function DownloadPage() {
         </CardHeader>
 
         <CardContent className="space-y-5">
-
-          {/* EXE */}
+          {/* EXE 다운로드 */}
           <div>
             <h4 className="font-semibold">AION Sentinel 설치 프로그램</h4>
             <p className="text-sm text-muted-foreground">
@@ -59,15 +63,14 @@ export default function DownloadPage() {
 
             <Button
               className="mt-3 flex items-center gap-2"
-              onClick={() => downloadFile("exe")}
-              disabled={loading === "exe"}
+              onClick={downloadExe}
             >
               <Download className="h-4 w-4" />
-              {loading === "exe" ? "다운로드 중..." : "EXE 다운로드"}
+              EXE 다운로드
             </Button>
           </div>
 
-          {/* PDF */}
+          {/* PDF 다운로드 */}
           <div className="pt-5 border-t">
             <h4 className="font-semibold">사용 설명서 (PDF)</h4>
             <p className="text-sm text-muted-foreground">
@@ -77,43 +80,12 @@ export default function DownloadPage() {
             <Button
               className="mt-3 flex items-center gap-2"
               variant="outline"
-              onClick={() => downloadFile("pdf")}
+              onClick={downloadPdf}
               disabled={loading === "pdf"}
             >
               <FileType className="h-4 w-4" />
               {loading === "pdf" ? "다운로드 중..." : "PDF 다운로드"}
             </Button>
-          </div>
-
-        </CardContent>
-      </Card>
-
-      {/* 구성 요소 안내 카드 */}
-      <Card>
-        <CardHeader>
-          <CardTitle>포함된 파일 안내</CardTitle>
-          <CardDescription>AION Sentinel 다운로드 구성</CardDescription>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-3">
-            <FileArchive className="h-5 w-5 text-primary" />
-            <div>
-              <div className="font-medium">AION Sentinel.exe</div>
-              <div className="text-sm text-muted-foreground">
-                보안 위협 분석 실행 프로그램
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <FileType className="h-5 w-5 text-accent" />
-            <div>
-              <div className="font-medium">manual.pdf</div>
-              <div className="text-sm text-muted-foreground">
-                설치 & 사용 설명서
-              </div>
-            </div>
           </div>
         </CardContent>
       </Card>
