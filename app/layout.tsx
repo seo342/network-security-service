@@ -8,7 +8,7 @@ import { Navigation } from "@/components/navigation"
 import { Footer } from "@/components/footer_dev"
 
 export const metadata = {
-  title: "API Dashboard",
+  title: "AION SecureNet",
   description: "API 트래픽/보안 모니터링 서비스",
 }
 
