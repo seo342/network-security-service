@@ -24,4 +24,8 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts"/public/files/*" 
+next-env.d.ts
+
+# ignore public exe folder
+/public/files/*
+!/public/files/manual.pdf
