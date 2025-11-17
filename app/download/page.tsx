@@ -9,11 +9,14 @@ import {
   CardContent,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Download, FileType, FileArchive } from "lucide-react"
+import { Download, FileType } from "lucide-react"
 
 export default function DownloadPage() {
   const [loading, setLoading] = useState<"" | "exe" | "pdf">("")
 
+  // ================================
+  // 📌 PDF 다운로드 (local 파일)
+  // ================================
   const downloadPdf = async () => {
     setLoading("pdf")
 
@@ -37,10 +40,15 @@ export default function DownloadPage() {
     setLoading("")
   }
 
-  // 🔥 EXE는 GitHub Releases redirect
+  // ================================
+  // 📌 EXE 다운로드 (PUBLIC URL)
+  // ================================
   const downloadExe = () => {
-    window.location.href =
-      "https://github.com/seo342/network-security-service/releases/download/v1.0.0/AION.Sentinel.exe"
+    const publicUrl =
+      "https://wdxkumdiyixkyqwbrwvh.supabase.co/storage/v1/object/public/file/AION_Sentinel.exe"
+
+    // 그냥 퍼블릭 URL로 이동 = 즉시 다운로드
+    window.location.href = publicUrl
   }
 
   return (
@@ -54,7 +62,9 @@ export default function DownloadPage() {
         </CardHeader>
 
         <CardContent className="space-y-5">
-          {/* EXE 다운로드 */}
+          {/* ============================ */}
+          {/* EXE 다운로드 버튼 */}
+          {/* ============================ */}
           <div>
             <h4 className="font-semibold">AION Sentinel 설치 프로그램</h4>
             <p className="text-sm text-muted-foreground">
@@ -70,7 +80,9 @@ export default function DownloadPage() {
             </Button>
           </div>
 
-          {/* PDF 다운로드 */}
+          {/* ============================ */}
+          {/* PDF 다운로드 버튼 */}
+          {/* ============================ */}
           <div className="pt-5 border-t">
             <h4 className="font-semibold">사용 설명서 (PDF)</h4>
             <p className="text-sm text-muted-foreground">
