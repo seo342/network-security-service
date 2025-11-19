@@ -112,24 +112,33 @@ export default function ThreatIpAnalysis({ apiKeyId }: { apiKeyId: string }) {
           </Button>
         </div>
 
-        {/* 🔹 IP 정보와 구글 맵 */}
-        {ipInfo?.lat && ipInfo?.lon && (
-          <div>
-            <h3 className="font-medium mb-2 text-base">IP 정보</h3>
-            <p>{ipInfo.city}, {ipInfo.country}</p>
+              {/* 🔹 IP 정보와 구글 맵 */}
+              {ipInfo?.lat && ipInfo?.lon && (
+                  <div>
+                      <h3 className="font-medium mb-2 text-base">IP 정보</h3>
+                      <p>{ipInfo.city}, {ipInfo.country}</p>
+                      {/* 각 IP 정보 표시 */}
+                      <ul className="space-y-2 text-sm">
+                          <li><strong>국가:</strong> {ipInfo.country}</li>
+                          <li><strong>도시:</strong> {ipInfo.city}</li>
+                          <li><strong>ISP:</strong> {ipInfo.isp}</li>
+                          <li><strong>조직:</strong> {ipInfo.org}</li>
+                          <li><strong>IP 주소:</strong> {ipInfo.query}</li>
+                          <li><strong>지역:</strong> {ipInfo.regionName}</li>
+                      </ul>
 
-            {/* 구글 맵 표시 */}
-            <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}> {/* .env에서 API 키 가져오기 */}
-              <GoogleMap
-                mapContainerStyle={{ width: "100%", height: "400px" }}
-                center={{ lat: ipInfo.lat, lng: ipInfo.lon }}
-                zoom={10}
-              >
-                <Marker position={{ lat: ipInfo.lat, lng: ipInfo.lon }} />
-              </GoogleMap>
-            </LoadScript>
-          </div>
-        )}
+                      {/* 구글 맵 표시 */}
+                      <LoadScript googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY}> {/* .env에서 API 키 가져오기 */}
+                          <GoogleMap
+                              mapContainerStyle={{ width: "100%", height: "400px" }}
+                              center={{ lat: ipInfo.lat, lng: ipInfo.lon }}
+                              zoom={10}
+                          >
+                              <Marker position={{ lat: ipInfo.lat, lng: ipInfo.lon }} />
+                          </GoogleMap>
+                      </LoadScript>
+                  </div>
+              )}
 
         {/* 🔹 Supabase DB 위협 목록 */}
         <h3 className="font-medium mb-2 text-base">
