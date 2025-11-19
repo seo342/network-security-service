@@ -11,7 +11,7 @@ import PasswordInput from "@/components/auth/PasswordInput"
 import PasswordStrengthMeter from "@/components/auth/PasswordStrengthMeter"
 import ConfirmPassword from "@/components/auth/ConfirmPassword"
 import TermsCheckbox from "@/components/auth/TermsCheckbox"
-import {supabase} from "@/lib/supabaseClient"
+import { supabase } from "@/lib/supabaseClient"
 
 export default function SignupForm() {
   const [formData, setFormData] = useState({
@@ -35,34 +35,50 @@ export default function SignupForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // 비밀번호 확인
     if (formData.password !== formData.confirmPassword) {
       alert("비밀번호가 일치하지 않습니다.")
       return
     }
+    // 약관 동의 체크
     if (!formData.agreed) {
       alert("약관에 동의해야 합니다.")
       return
     }
 
     setIsLoading(true)
-    try{
-      const {data,error}=await supabase.auth.signUp({
-        email:formData.email,
-        password:formData.password,
-        options:{
-          data:{
-            name:formData.name, //메타데이터로 저장
+    try {
+      // Supabase로 회원가입 처리
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            name: formData.name, // 메타데이터로 저장
           },
         },
       })
-      if(error) throw error
+
+      if (error) throw error
+
+      // 회원가입 후 프로필 정보 추가
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .upsert({
+          id: data.user.id, // auth.uid()와 동일한 user.id 사용
+          name: formData.name,
+          email: formData.email,
+        })
+
+      if (profileError) throw profileError
+
       alert("회원가입에 성공했습니다. 가입해 주셔서 진심으로 감사합니다.")
-      router.push("/login")
-    }
-    catch(err:any){
-      alert(err.masagge||"회원가입에 실패했습니다.")
-    }
-    finally{
+
+      // 회원가입 후 홈 페이지로 리디렉션
+      router.push("/") // 홈페이지로 리디렉션
+    } catch (err: any) {
+      alert(err.message || "회원가입에 실패했습니다.")
+    } finally {
       setIsLoading(false)
     }
   }
@@ -78,13 +94,28 @@ export default function SignupForm() {
           {/* 이름 */}
           <div className="space-y-2">
             <Label htmlFor="name">이름</Label>
-            <Input id="name" name="name" value={formData.name} onChange={handleInputChange} placeholder="홍길동" required />
+            <Input
+              id="name"
+              name="name"
+              value={formData.name}
+              onChange={handleInputChange}
+              placeholder="홍길동"
+              required
+            />
           </div>
 
           {/* 이메일 */}
           <div className="space-y-2">
             <Label htmlFor="email">이메일</Label>
-            <Input id="email" name="email" type="email" value={formData.email} onChange={handleInputChange} placeholder="example@yourEmail.com" required />
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              value={formData.email}
+              onChange={handleInputChange}
+              placeholder="example@yourEmail.com"
+              required
+            />
           </div>
 
           {/* 비밀번호 */}
