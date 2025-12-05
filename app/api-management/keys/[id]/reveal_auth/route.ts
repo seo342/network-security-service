@@ -27,13 +27,13 @@ export async function GET(
     if (error || !record)
       return NextResponse.json({ error: "API key not found" }, { status: 404 })
 
-    // 🔒 사용자 인증
+    // 사용자 인증
     if (record.user_id !== user.id)
       return NextResponse.json({ error: "Access denied" }, { status: 403 })
     if (record.status !== "active")
       return NextResponse.json({ error: "Key inactive" }, { status: 403 })
 
-    // ✅ Auth Key 반환
+    // Auth Key 반환
     return NextResponse.json({
       message: "Auth key successfully retrieved",
       authKey: record.auth_key,
