@@ -21,7 +21,7 @@ export async function GET(
     if (!secret)
       return NextResponse.json({ error: "Server misconfigured: missing MASTER_SECRET_KEY" }, { status: 500 })
 
-    // 1️⃣ 랜덤값 조회
+    //  랜덤값 조회
     const { data: record, error } = await supabaseAdmin
       .from("api_keys")
       .select("user_id, random_value, status")
@@ -35,10 +35,10 @@ export async function GET(
     if (record.status !== "active")
       return NextResponse.json({ error: "Key inactive" }, { status: 403 })
 
-    // 2️⃣ 복원
+    //  복원
     const api_key = crypto.createHash("sha256").update(record.random_value + secret).digest("hex")
 
-    // 3️⃣ 응답
+    //  응답
     return NextResponse.json({
       message: "API key successfully restored",
       apiKey: api_key,
