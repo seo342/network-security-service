@@ -92,36 +92,107 @@
 
 로그인한 사용자의 api키를 조회하고 , 새로운 api키를 생성, 저장, 반환
 
-1. 로그인한 사용자의 API 키 목록 조회
+크게 GET, POST 이 두가지로 있음
+
+GET : 로그인한 사용자의 API 키 목록 조회
+
+1. Authorization 헤더에서 사용자 인증 토큰 추출
 
    ● authorization 헤더를 읽고 없으면 401 Unauthorized 반환.
 
-   ● Supabase 인증으로 사용자 검증
+   ● userError가 있거나 user가 없으면 401 Invalid user로 요청 거부.
 
-   ● 해당 유저의 api_keys 목록 조회
+2. Supabase 인증으로 사용자 검증
 
-   ● 조회 결과 반환
+   ● supabaseAdmin.auth.getUser(token)을 호출해 토큰에 해당하는 user 정보를 가져옴.
 
-2. 새로운 API키 생성
+   ● userError가 있거나 user가 없으면 401 Invalid user로 요청 거부.
 
-  ● Authorization 헤더로 사용자 인증
+3. 해당 유저의 api_keys 목록 조회
 
-  ● 요청 Body 파싱 (이름/설명 입력 받기)
+   ● api_keys 테이블에서 user_id == user.id 인 row들을 선택.
 
-  ● .env 파일에서 SALT 키를 가져옴 (비밀값)
+   ● created_at 기준으로 내림차순 정렬해서 최근에 만든 키가 위에 오도록 함.
 
-  ● 랜덤값 및 인증키(auth_key) 생성
-  
-     ● random_value = crypto.randomBytes(32).toString("hex") -> DB에 저장될, 사용자별 고유 랜덤 시드 값.
+4. 조회 결과 반환
 
-     ● auth_key = crypto.randomBytes(24).toString("hex") -> 에이전트나 API 클라이언트가 요청 보낼 때 헤더로 사용하는 실제 인증 키.
+   ● API 키 목록 배열을 그대로 NextResponse.json(data)로 반환.
 
-  ● api_key 계산 (DB에는 저장하지 않음)
+   ● 에러시 로그를 찍고 500에러 메시지 응답
 
-  ● DB에 api_keys 행 저장
-  
-  ● 클라이언트에게 apiKey + authKey 반환
+POST : 새로운 API 키 생성
 
+1. Authorization 헤더로 사용자 인증
+
+   ● GET과 동일하게 authorization 헤더에서 토큰을 추출.
+   
+   ● supabaseAdmin.auth.getUser(token)으로 사용자 검증.
+
+2. 요청 Body 파싱
+
+   ● await req.json()으로 body를 파싱하여 { name, description } 추출.
+
+   ● 이 값들은 생성될 API 키를 대시보드에서 구분하기 위한 메타데이터.
+
+3. 시크릿 키 준비
+
+   ● process.env.MASTER_SECRET_KEY에서 서버만 알고 있는 비밀 키를 가져옴.
+
+   ● 설정이 안 되어 있으면 fallback으로 "default_secret" 사용.
+
+4. 랜덤값 및 인증키 생성
+
+   ● random_value = crypto.randomBytes(32).toString("hex") -> DB에 저장될, 사용자별 고유 랜덤 시드 값.
+
+   ● auth_key = crypto.randomBytes(24).toString("hex") -> 에이전트나 API 클라이언트가 요청 보낼 때 헤더로 사용하는 실제 인증 키.
+
+5. api_key 계산
+
+   ● api_key = sha256(random_value + secret) 형태로 해시를 생성, 이 api_key는 서버에 저장하지 않고 사용자가 이 값을 가지고 있다가 재확인할때 랜덤값 + 시크릿 키 조합을 사용해 검증할 수 있는 구조로 설계 가능함.
+
+6. DB에 api_keys 행 저장
+
+   ● supabaseAdmin.from("api_keys").insert([...])로 행 삽입
+
+7. 클라이언트에게 apiKey + authKey 반환
+--------------------------------------------------------------------------------------------
+/api-management/keys/[id]/reveals
+--------------------------------------------------------------------------------------------
+
+특정 API 키의 원본(apiKey)을 다시 복원해서 사용자에게 돌려줌
+
+
+1. API 키 및 사용자 인증
+
+   ● authorization 헤더가 없으면 401 Unauthorized로 요청을 거부함.
+
+   ● 헤더에서 Bearer 토큰을 추출하고 supabaseAdmin.auth.getUser(token)으로 로그인된 사용자 정보를 가져옴.
+
+   ● 사용자 정보가 없거나 인증에 실패하면 401 Invalid user 응답을 반환함.
+
+2. 요청된 API 키 ID 확인 및 서버 설정 검사
+
+   ● URL 경로의 params.id 값을 parseInt로 정수 형태로 변환함 (keyId).
+
+   ● 서버 환경변수에서 API_KEY_SALT 값을 로드함.
+
+3. DB에서 API 키 레코드 조회 및 권한 확인
+
+   ● api_keys 테이블에서 해당 keyId에 맞는 레코드를 조회함.
+
+   ● 로그인한 사용자 ID(user.id)와 레코드의 user_id가 다르면 403 Access denied. status !== "active"라면 403 Key inactive로 요청을 거부.
+
+   4. apiKey 복원
+
+      ● DB에 저장된 random_value와 서버 비밀 API_KEY_SALT를 결합하여 SHA-256 해시를 다시 계산함.
+
+   5. 복원된 API 키 반환
+
+      ● 서버 내부에서 복원된 값은 유저 본인만 다시 확인 가능함.
+
+   auth_key 복원도 이와 동일함
+
+   ---------------------------------------------------------------------------------------------
    
 
 
