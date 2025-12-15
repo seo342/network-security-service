@@ -6,6 +6,7 @@ import { supabaseAdmin } from "@/lib/supabaseServiceClient"
  * - data.json의 threat_ip_list를 반복 삽입
  * - source_ip → ip_address 매핑
  * - 중복 시 upsert
+ * - 오류시 제보바람
  */
 export async function POST(req: Request) {
   try {
